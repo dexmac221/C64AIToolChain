@@ -4,6 +4,15 @@
 
 This project demonstrates a workflow where AI models can write, debug, and even playtest 6510 assembly games by providing them with a structured feedback loop involving the VICE emulator and Python-based visual verification.
 
+```mermaid
+graph TD
+    AI[AI Agent / User] -->|Writes .s code| Code[Assembly Code]
+    Code -->|cc65| Binary[.prg File]
+    Binary -->|reload_game.py| VICE[VICE Emulator]
+    VICE -->|Remote Monitor :6510| Bridge[ai_toolchain.py]
+    Bridge -->|ASCII Screen Dump| AI
+```
+
 ## Core Concept
 
 Developing in 6510 Assembly is challenging due to the lack of modern debugging tools and the complexity of memory management. **C64AIToolChain** solves this by creating a bridge:
@@ -21,6 +30,8 @@ Developing in 6510 Assembly is challenging due to the lack of modern debugging t
 - **Bridge**: Python 3 scripts (`ai_toolchain.py`) handling the socket communication.
 
 ## Included Example: Snake
+
+![Snake Game Demo](snake.gif)
 
 The repository includes a complete **Snake** game developed using this toolchain. It serves as a proof-of-concept for:
 - **Zero Page Optimization**: Efficient use of the 6510's fastest memory.
