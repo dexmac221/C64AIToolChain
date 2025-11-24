@@ -1,0 +1,8 @@
+*.prg
+*.o
+*.map
+*.lbl
+__pycache__/
+vice.log
+vice.log.*
+

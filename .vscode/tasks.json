@@ -1,0 +1,26 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Snake",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"./build.sh"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "Run in VICE",
+			"type": "shell",
+			"command": "x64",
+			"args": [
+				"-remotemonitor",
+				"snake.prg"
+			],
+			"isBackground": true,
+			"group": "test"
+		}
+	]
+}
