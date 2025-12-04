@@ -13,15 +13,72 @@ As an AI agent, you have **no direct visual perception**. You cannot:
 - Observe sprite movements
 - Verify graphical output directly
 
-**Solution**: This toolchain provides "eyes" through text-based screen capture.
+**Solutions** (choose based on setup):
+1. **ASCII Art** (`look_screen.py`) - Works anywhere, low-fi
+2. **VLM Vision** (`vlm_look.py`) - TRUE vision via local Ollama VLM
+3. **Memory Reading** (`ai_toolchain.py`) - Direct game state access
 
 ---
 
 ## Available Tools
 
-### 1. `look_screen.py` - Visual Feedback via Screenshot
+### 1. `vlm_look.py` - TRUE Vision via Local VLM (Best Option!)
 
-Takes a screenshot from VICE and converts to ASCII art.
+**This is the gold standard** - uses a local Vision Language Model (Qwen3-VL, LLaVA) 
+via Ollama to actually SEE and DESCRIBE the screen in natural language.
+
+```bash
+# Basic usage - capture and analyze
+python3 vlm_look.py
+
+# Use specific VLM model
+python3 vlm_look.py --model qwen3-vl
+
+# Custom analysis prompt
+python3 vlm_look.py --prompt "Is the snake about to hit a wall?"
+
+# Analyze existing image
+python3 vlm_look.py --existing game_screenshot.png
+
+# List available VLM models
+python3 vlm_look.py --list-models
+
+# Remote Ollama server (default: 192.168.1.62)
+python3 vlm_look.py --host http://192.168.1.62:11434
+```
+
+**Example output:**
+```
+VLM ANALYSIS
+============================================================
+### 1. Game elements  
+- **Player character**: Pink sprite (likely a snake head) at center.  
+- **Food/collectibles**: Green circle on the right side.  
+- **Obstacles**: Green blocks scattered across the play area.  
+- **Score**: "SCORE: 005" (top-left corner).  
+
+### 2. Main character position  
+Pink sprite is **centered vertically**, **left of center** horizontally.
+
+### 3. Text displayed  
+- "SCORE: 005" (top-left).  
+
+### 4. Current game state  
+**Active gameplay** - snake is moving, collecting apples.
+
+### 5. Visual issues/bugs  
+None evident. Sprites render cleanly.
+============================================================
+```
+
+**Requirements:**
+- Ollama running on 192.168.1.62 (or specified host): `ollama serve`
+- VLM model installed: `ollama pull qwen3-vl`
+
+### 2. `look_screen.py` - ASCII Art Fallback
+
+If VLM is not available, converts screenshots to ASCII art.
+Lower fidelity but works without additional services.
 
 ```bash
 # Basic usage - capture and display
@@ -187,8 +244,9 @@ Based on observation, modify code and repeat.
 
 ```
 C64AIToolChain/
+├── vlm_look.py          # VLM-based vision (Ollama/Qwen)
+├── look_screen.py       # ASCII art fallback
 ├── ai_toolchain.py      # Memory-based screen reading
-├── look_screen.py       # Screenshot-based viewing
 ├── screenshot.sh        # VICE screenshot helper
 ├── snake2/
 │   ├── snake.s          # Main assembly source
@@ -196,6 +254,41 @@ C64AIToolChain/
 │   ├── build.sh         # Build script
 │   ├── run_vice.sh      # VICE launcher
 │   └── snake.prg        # Compiled program
+```
+
+---
+
+## VLM Setup (Recommended)
+
+For TRUE vision capability, set up Ollama with a VLM:
+
+```bash
+# 1. Install Ollama (if not installed)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# 2. Pull a VLM model (choose one)
+ollama pull qwen3-vl        # Recommended - best for detailed analysis
+ollama pull llava           # Faster, good quality
+
+# 3. Start Ollama server (if not running)
+ollama serve
+
+# 4. Test
+python3 vlm_look.py --list-models
+```
+
+**Default configuration:**
+- Host: `http://192.168.1.62:11434`
+- Model: `qwen3-vl`
+
+**For remote Ollama (e.g., on GPU machine):**
+```bash
+# On GPU machine (192.168.1.62)
+OLLAMA_HOST=0.0.0.0:11434 ollama serve
+
+# Set environment variable (optional)
+export OLLAMA_HOST=http://192.168.1.62:11434
+export OLLAMA_MODEL=qwen3-vl
 ```
 
 ---
@@ -238,15 +331,20 @@ $D027-$D02E = Sprite colors
 
 For iterative development, use this hierarchy:
 
-1. **First**: Memory reading (lowest cost)
+1. **First**: VLM analysis (best quality, requires Ollama)
+   - Natural language description
+   - Can answer specific questions
+   - Understands context and game state
+
+2. **Second**: Memory reading (fastest, lowest cost)
    - Check game variables
    - Verify screen RAM content
    
-2. **Second**: ASCII screenshot (medium cost)
+3. **Third**: ASCII screenshot (medium cost)
    - Verify layout
    - Check sprite positions
    
-3. **Third**: Full image (highest cost, requires human)
+4. **Fourth**: Full image (requires human)
    - Final visual polish
    - Color verification
 
