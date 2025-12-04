@@ -79,6 +79,17 @@ sudo apt install cc65 vice python3
 
 ## Toolchain Components
 
+### `run_vice.sh`
+Universal VICE launcher that handles environment issues (especially when running from VS Code or other IDEs). It clears problematic environment variables and tries both `x64sc` and `x64` executables.
+
+```bash
+# Run with default (snake/snake.prg)
+./run_vice.sh
+
+# Run a specific PRG file
+./run_vice.sh tetris_v1/tetris.prg
+```
+
 ### `ai_toolchain.py`
 The eyes of the system. It connects to `localhost:6510`, dumps memory range `$0400-$07E7` (Screen RAM), and renders it as ASCII. This allows an AI to verify:
 - Did the snake spawn correctly?
@@ -87,6 +98,19 @@ The eyes of the system. It connects to `localhost:6510`, dumps memory range `$04
 
 ### `reload_game.py`
 The hands of the system. It automates the tedious process of detaching the disk image, loading the new PRG, and restarting the program execution, preserving the emulator window.
+
+### `screenshot.sh`
+Capture screenshots from VICE via the remote monitor. Supports multiple formats.
+
+```bash
+# Take a PNG screenshot (default)
+./screenshot.sh myscreen
+
+# Take a GIF screenshot
+./screenshot.sh myscreen 3
+
+# Formats: 0=BMP, 1=PCX, 2=PNG, 3=GIF, 4=IFF
+```
 
 ## License
 MIT

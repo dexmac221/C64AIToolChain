@@ -1,0 +1,846 @@
+ca65 V2.18 - Ubuntu 2.19-1
+Main file   : snake.s
+Current file: snake.s
+
+000000r 1               ; -----------------------------------------------------------------------------
+000000r 1               ; SNAKE 2 - Sprite-Based Version for C64
+000000r 1               ; Uses hardware sprites for smooth movement
+000000r 1               ; -----------------------------------------------------------------------------
+000000r 1               
+000000r 1               ; --- VIC-II Sprite Registers ---
+000000r 1               VIC_BASE    = $D000
+000000r 1               SPR0_X      = $D000     ; Sprite 0 X position
+000000r 1               SPR0_Y      = $D001     ; Sprite 0 Y position
+000000r 1               SPR1_X      = $D002     ; Sprite 1 X position (apple)
+000000r 1               SPR1_Y      = $D003     ; Sprite 1 Y position
+000000r 1               SPR_ENABLE  = $D015     ; Sprite enable register
+000000r 1               SPR_X_MSB   = $D010     ; MSB of X coordinates (bit 8)
+000000r 1               SPR_EXPAND_X = $D01D    ; Sprite X expand
+000000r 1               SPR_EXPAND_Y = $D017    ; Sprite Y expand
+000000r 1               SPR_PRIORITY = $D01B    ; Sprite priority (0=front)
+000000r 1               SPR_MULTICLR = $D01C    ; Multicolor mode
+000000r 1               SPR_SPR_COL = $D01E     ; Sprite-sprite collision
+000000r 1               SPR_BG_COL  = $D01F     ; Sprite-background collision
+000000r 1               SPR0_COLOR  = $D027     ; Sprite 0 color
+000000r 1               SPR1_COLOR  = $D028     ; Sprite 1 color
+000000r 1               SPR2_COLOR  = $D029     ; Sprite 2 color
+000000r 1               SPR3_COLOR  = $D02A     ; Sprite 3 color
+000000r 1               SPR4_COLOR  = $D02B     ; Sprite 4 color
+000000r 1               SPR5_COLOR  = $D02C     ; Sprite 5 color
+000000r 1               SPR6_COLOR  = $D02D     ; Sprite 6 color
+000000r 1               
+000000r 1               ; --- VIC-II Sprite Offset Constants ---
+000000r 1               ; Sprites are offset from visible screen area
+000000r 1               SPRITE_X_OFFSET = 24    ; X offset for visible area
+000000r 1               SPRITE_Y_OFFSET = 50    ; Y offset for visible area
+000000r 1               SPR7_COLOR  = $D02E     ; Sprite 7 color
+000000r 1               SPR_PTRS    = $07F8     ; Sprite pointers (screen + $3F8)
+000000r 1               
+000000r 1               ; --- Other Hardware ---
+000000r 1               SCREEN_RAM  = $0400
+000000r 1               COLOR_RAM   = $D800
+000000r 1               JOYSTICK    = $DC00
+000000r 1               BORDER      = $D020
+000000r 1               BG_COLOR    = $D021
+000000r 1               
+000000r 1               ; --- Game Constants ---
+000000r 1               SPRITE_BASE = $2000     ; Sprite data starts here (block 128 = $2000/64)
+000000r 1               SPRITE_BLOCK = 128      ; First sprite block number ($2000/64)
+000000r 1               
+000000r 1               ; Screen boundaries for sprites (in pixels)
+000000r 1               MIN_X       = 24        ; Left edge
+000000r 1               MAX_X       = 255       ; Right edge (without MSB)
+000000r 1               MIN_Y       = 50        ; Top edge
+000000r 1               MAX_Y       = 229       ; Bottom edge
+000000r 1               
+000000r 1               ; Movement step (in pixels)
+000000r 1               MOVE_STEP   = 8         ; 8 pixels = 1 character cell
+000000r 1               
+000000r 1               ; Character codes for background
+000000r 1               CHAR_SPACE  = 32
+000000r 1               CHAR_WALL   = 160
+000000r 1               CHAR_GRASS  = 46        ; Period for grass texture
+000000r 1               
+000000r 1               ; --- Zero Page Segment ---
+000000r 1               .segment "ZEROPAGE"
+000000r 1  xx xx        head_x:     .res 2      ; 16-bit X position for MSB handling
+000002r 1  xx           head_y:     .res 1      ; Y position
+000003r 1  xx           dir:        .res 1      ; 0=N, 1=S, 2=W, 3=E
+000004r 1  xx xx        apple_x:    .res 2      ; 16-bit Apple X
+000006r 1  xx           apple_y:    .res 1      ; Apple Y
+000007r 1  xx           score:      .res 1
+000008r 1  xx           frame_cnt:  .res 1
+000009r 1  xx           tick:       .res 1      ; RNG counter
+00000Ar 1  xx           ptr_lo:     .res 1
+00000Br 1  xx           ptr_hi:     .res 1
+00000Cr 1  xx           tmp_lo:     .res 1
+00000Dr 1  xx           tmp_hi:     .res 1
+00000Er 1  xx           tail_idx:   .res 1      ; Tail buffer index
+00000Fr 1  xx           head_idx:   .res 1      ; Head buffer index
+000010r 1  xx           grow:       .res 1      ; Grow flag
+000011r 1  xx           input_delay:.res 1
+000012r 1  xx           game_over:  .res 1
+000013r 1  xx           speed:      .res 1      ; Game speed (frames between moves)
+000014r 1  xx           temp_count: .res 1      ; Temporary counter for loops
+000015r 1               
+000015r 1               ; --- BSS Segment ---
+000015r 1               .segment "BSS"
+000000r 1               ; Trail positions for body segments (using sprites 2-7)
+000000r 1  xx xx xx xx  trail_x_lo: .res 64     ; X low byte history
+000004r 1  xx xx xx xx  
+000008r 1  xx xx xx xx  
+000040r 1  xx xx xx xx  trail_x_hi: .res 64     ; X high byte history
+000044r 1  xx xx xx xx  
+000048r 1  xx xx xx xx  
+000080r 1  xx xx xx xx  trail_y:    .res 64     ; Y history
+000084r 1  xx xx xx xx  
+000088r 1  xx xx xx xx  
+0000C0r 1               
+0000C0r 1               ; --- BASIC Header ---
+0000C0r 1               .segment "HEADER"
+000000r 1  01 08            .word $0801
+000002r 1  rr rr            .word next_line
+000004r 1  0A 00            .word 10
+000006r 1  9E               .byte $9E
+000007r 1  32 30 36 31      .byte "2061", 0
+00000Br 1  00           
+00000Cr 1               next_line:
+00000Cr 1  00 00            .word 0
+00000Er 1               
+00000Er 1               ; --- Main Code ---
+00000Er 1               .segment "CODE"
+000000r 1               start:
+000000r 1  78               sei
+000001r 1  D8               cld
+000002r 1               
+000002r 1                   ; Set up sprite data area
+000002r 1  20 rr rr         jsr init_sprites
+000005r 1  20 rr rr         jsr init_screen
+000008r 1  20 rr rr         jsr init_vars
+00000Br 1  20 rr rr         jsr spawn_apple
+00000Er 1               
+00000Er 1               game_loop:
+00000Er 1  20 rr rr         jsr wait_frame
+000011r 1               
+000011r 1  A5 rr            lda game_over
+000013r 1  D0 12            bne game_over_loop
+000015r 1               
+000015r 1  20 rr rr         jsr ai_move         ; AI demo mode
+000018r 1                   ; jsr read_joy      ; Uncomment for human control
+000018r 1  20 rr rr         jsr move_snake
+00001Br 1  20 rr rr         jsr check_collision
+00001Er 1  20 rr rr         jsr update_sprites
+000021r 1  20 rr rr         jsr draw_score
+000024r 1               
+000024r 1  4C rr rr         jmp game_loop
+000027r 1               
+000027r 1               game_over_loop:
+000027r 1                   ; Flash border on game over
+000027r 1  EE 20 D0         inc BORDER
+00002Ar 1  20 rr rr         jsr wait_frame
+00002Dr 1  4C rr rr         jmp game_over_loop
+000030r 1               
+000030r 1               ; -----------------------------------------------------------------------------
+000030r 1               ; SPRITE INITIALIZATION
+000030r 1               ; -----------------------------------------------------------------------------
+000030r 1               init_sprites:
+000030r 1                   ; Copy sprite data to VIC-visible sprite area at $2000
+000030r 1                   ; Each sprite is 64 bytes
+000030r 1               
+000030r 1                   ; Copy head sprite (64 bytes)
+000030r 1  A2 00            ldx #0
+000032r 1               copy_head:
+000032r 1  BD rr rr         lda sprite_head, x
+000035r 1  9D 00 20         sta $2000, x                ; Block 128
+000038r 1  E8               inx
+000039r 1  E0 40            cpx #64
+00003Br 1  D0 F5            bne copy_head
+00003Dr 1               
+00003Dr 1                   ; Copy apple sprite (64 bytes)
+00003Dr 1  A2 00            ldx #0
+00003Fr 1               copy_apple:
+00003Fr 1  BD rr rr         lda sprite_apple, x
+000042r 1  9D 40 20         sta $2040, x                ; Block 129
+000045r 1  E8               inx
+000046r 1  E0 40            cpx #64
+000048r 1  D0 F5            bne copy_apple
+00004Ar 1               
+00004Ar 1                   ; Copy body sprite (64 bytes)
+00004Ar 1  A2 00            ldx #0
+00004Cr 1               copy_body:
+00004Cr 1  BD rr rr         lda sprite_body, x
+00004Fr 1  9D 80 20         sta $2080, x                ; Block 130
+000052r 1  E8               inx
+000053r 1  E0 40            cpx #64
+000055r 1  D0 F5            bne copy_body
+000057r 1               
+000057r 1                   ; Set sprite pointers
+000057r 1  A9 80            lda #SPRITE_BLOCK           ; Head = block 128 ($2000)
+000059r 1  8D F8 07         sta SPR_PTRS
+00005Cr 1  A9 81            lda #SPRITE_BLOCK + 1       ; Apple = block 129 ($2040)
+00005Er 1  8D F9 07         sta SPR_PTRS + 1
+000061r 1               
+000061r 1                   ; Body segments (sprites 2-7) use block 130 ($2080)
+000061r 1  A9 82            lda #SPRITE_BLOCK + 2
+000063r 1  8D FA 07         sta SPR_PTRS + 2
+000066r 1  8D FB 07         sta SPR_PTRS + 3
+000069r 1  8D FC 07         sta SPR_PTRS + 4
+00006Cr 1  8D FD 07         sta SPR_PTRS + 5
+00006Fr 1  8D FE 07         sta SPR_PTRS + 6
+000072r 1  8D FF 07         sta SPR_PTRS + 7
+000075r 1               
+000075r 1                   ; Enable sprites (head + apple + 6 body)
+000075r 1  A9 FF            lda #%11111111              ; All 8 sprites enabled
+000077r 1  8D 15 D0         sta SPR_ENABLE
+00007Ar 1               
+00007Ar 1                   ; Set sprite colors
+00007Ar 1  A9 05            lda #5                      ; Green for head
+00007Cr 1  8D 27 D0         sta SPR0_COLOR
+00007Fr 1  A9 02            lda #2                      ; Red for apple
+000081r 1  8D 28 D0         sta SPR1_COLOR
+000084r 1  A9 0D            lda #13                     ; Light green for body
+000086r 1  8D 29 D0         sta SPR2_COLOR
+000089r 1  8D 2A D0         sta SPR3_COLOR
+00008Cr 1  8D 2B D0         sta SPR4_COLOR
+00008Fr 1  8D 2C D0         sta SPR5_COLOR
+000092r 1  8D 2D D0         sta SPR6_COLOR
+000095r 1  8D 2E D0         sta SPR7_COLOR
+000098r 1               
+000098r 1                   ; Don't expand sprites (keep normal 24x21 size)
+000098r 1  A9 00            lda #0
+00009Ar 1  8D 1D D0         sta SPR_EXPAND_X
+00009Dr 1  8D 17 D0         sta SPR_EXPAND_Y
+0000A0r 1               
+0000A0r 1                   ; IMPORTANT: Disable multicolor mode for all sprites (hires mode)
+0000A0r 1  A9 00            lda #0
+0000A2r 1  8D 1C D0         sta SPR_MULTICLR
+0000A5r 1               
+0000A5r 1                   ; Clear X MSB register
+0000A5r 1  A9 00            lda #0
+0000A7r 1  8D 10 D0         sta SPR_X_MSB
+0000AAr 1               
+0000AAr 1  60               rts
+0000ABr 1               
+0000ABr 1               ; -----------------------------------------------------------------------------
+0000ABr 1               ; SCREEN INITIALIZATION
+0000ABr 1               ; -----------------------------------------------------------------------------
+0000ABr 1               init_screen:
+0000ABr 1                   ; Set colors
+0000ABr 1  A9 00            lda #0                      ; Black background
+0000ADr 1  8D 21 D0         sta BG_COLOR
+0000B0r 1  A9 00            lda #0                      ; Black border
+0000B2r 1  8D 20 D0         sta BORDER
+0000B5r 1               
+0000B5r 1                   ; Clear screen with grass pattern
+0000B5r 1  A2 00            ldx #0
+0000B7r 1               clear_loop:
+0000B7r 1  A9 2E            lda #CHAR_GRASS
+0000B9r 1  9D 00 04         sta SCREEN_RAM, x
+0000BCr 1  9D 00 05         sta SCREEN_RAM + 256, x
+0000BFr 1  9D 00 06         sta SCREEN_RAM + 512, x
+0000C2r 1  9D 00 07         sta SCREEN_RAM + 768, x
+0000C5r 1  A9 0B            lda #11                     ; Dark grey for grass
+0000C7r 1  9D 00 D8         sta COLOR_RAM, x
+0000CAr 1  9D 00 D9         sta COLOR_RAM + 256, x
+0000CDr 1  9D 00 DA         sta COLOR_RAM + 512, x
+0000D0r 1  9D 00 DB         sta COLOR_RAM + 768, x
+0000D3r 1  E8               inx
+0000D4r 1  D0 E1            bne clear_loop
+0000D6r 1               
+0000D6r 1                   ; Draw walls (top and bottom)
+0000D6r 1  A2 00            ldx #0
+0000D8r 1               wall_top_bottom:
+0000D8r 1  A9 A0            lda #CHAR_WALL
+0000DAr 1  9D 00 04         sta SCREEN_RAM, x           ; Top row
+0000DDr 1  9D C0 07         sta SCREEN_RAM + 24*40, x   ; Bottom row (row 24)
+0000E0r 1  A9 0C            lda #12                     ; Grey color
+0000E2r 1  9D 00 D8         sta COLOR_RAM, x
+0000E5r 1  9D C0 DB         sta COLOR_RAM + 24*40, x
+0000E8r 1  E8               inx
+0000E9r 1  E0 28            cpx #40
+0000EBr 1  D0 EB            bne wall_top_bottom
+0000EDr 1               
+0000EDr 1                   ; Draw side walls
+0000EDr 1  A2 00            ldx #0
+0000EFr 1               wall_sides:
+0000EFr 1  8A               txa
+0000F0r 1  0A               asl
+0000F1r 1  85 rr            sta tmp_lo
+0000F3r 1  8A               txa
+0000F4r 1  4A               lsr
+0000F5r 1  4A               lsr
+0000F6r 1  4A               lsr
+0000F7r 1  85 rr            sta tmp_hi
+0000F9r 1                   ; Calculate row offset: x * 40
+0000F9r 1  A5 rr            lda tmp_lo
+0000FBr 1  0A               asl
+0000FCr 1  0A               asl                         ; tmp_lo * 4
+0000FDr 1  18               clc
+0000FEr 1  65 rr            adc tmp_lo                  ; tmp_lo * 5
+000100r 1  0A               asl
+000101r 1  0A               asl
+000102r 1  0A               asl                         ; * 40 (approximately)
+000103r 1                   ; This is getting complex, let's use a simpler approach
+000103r 1  E8               inx
+000104r 1  E0 19            cpx #25
+000106r 1  D0 E7            bne wall_sides
+000108r 1               
+000108r 1                   ; Actually draw side walls properly
+000108r 1  A9 00            lda #<SCREEN_RAM
+00010Ar 1  85 rr            sta ptr_lo
+00010Cr 1  A9 04            lda #>SCREEN_RAM
+00010Er 1  85 rr            sta ptr_hi
+000110r 1               
+000110r 1  A2 19            ldx #25                     ; 25 rows
+000112r 1               side_wall_loop:
+000112r 1  A0 00            ldy #0
+000114r 1  A9 A0            lda #CHAR_WALL
+000116r 1  91 rr            sta (ptr_lo), y             ; Left wall
+000118r 1  A0 27            ldy #39
+00011Ar 1  91 rr            sta (ptr_lo), y             ; Right wall
+00011Cr 1               
+00011Cr 1                   ; Add 40 to pointer
+00011Cr 1  A5 rr            lda ptr_lo
+00011Er 1  18               clc
+00011Fr 1  69 28            adc #40
+000121r 1  85 rr            sta ptr_lo
+000123r 1  A5 rr            lda ptr_hi
+000125r 1  69 00            adc #0
+000127r 1  85 rr            sta ptr_hi
+000129r 1               
+000129r 1  CA               dex
+00012Ar 1  D0 E6            bne side_wall_loop
+00012Cr 1               
+00012Cr 1                   ; Draw "SCORE:" text
+00012Cr 1  A2 00            ldx #0
+00012Er 1               draw_score_label:
+00012Er 1  BD rr rr         lda score_text, x
+000131r 1  F0 0C            beq score_label_done
+000133r 1  9D 28 04         sta SCREEN_RAM + 40, x      ; Row 1
+000136r 1  A9 01            lda #1                      ; White
+000138r 1  9D 28 D8         sta COLOR_RAM + 40, x
+00013Br 1  E8               inx
+00013Cr 1  4C rr rr         jmp draw_score_label
+00013Fr 1               score_label_done:
+00013Fr 1  60               rts
+000140r 1               
+000140r 1               ; -----------------------------------------------------------------------------
+000140r 1               ; VARIABLE INITIALIZATION
+000140r 1               ; -----------------------------------------------------------------------------
+000140r 1               init_vars:
+000140r 1                   ; Initialize snake position (center of play area)
+000140r 1  A9 8C            lda #140                    ; X position (low byte)
+000142r 1  85 rr            sta head_x
+000144r 1  A9 00            lda #0                      ; X position (high byte)
+000146r 1  85 rr            sta head_x + 1
+000148r 1  A9 8C            lda #140                    ; Y position
+00014Ar 1  85 rr            sta head_y
+00014Cr 1               
+00014Cr 1  A9 03            lda #3                      ; Start moving East
+00014Er 1  85 rr            sta dir
+000150r 1               
+000150r 1  A9 00            lda #0
+000152r 1  85 rr            sta score
+000154r 1  85 rr            sta frame_cnt
+000156r 1  85 rr            sta tail_idx
+000158r 1  85 rr            sta game_over
+00015Ar 1  85 rr            sta grow
+00015Cr 1               
+00015Cr 1  A9 15            lda #21                     ; Initial length (7 segments × 3 spacing)
+00015Er 1  85 rr            sta head_idx
+000160r 1               
+000160r 1  A9 08            lda #8                      ; Speed (frames between moves)
+000162r 1  85 rr            sta speed
+000164r 1               
+000164r 1                   ; Initialize RNG
+000164r 1  AD 12 D0         lda $D012
+000167r 1  85 rr            sta tick
+000169r 1               
+000169r 1                   ; Initialize trail with positions spread out behind head
+000169r 1                   ; Snake starts going East, so trail extends to the West
+000169r 1  A2 00            ldx #0
+00016Br 1  A5 rr            lda head_x                  ; Start with head X
+00016Dr 1  85 rr            sta tmp_lo
+00016Fr 1  A5 rr            lda head_x + 1
+000171r 1  85 rr            sta tmp_hi
+000173r 1               init_trail:
+000173r 1                   ; Store current position
+000173r 1  A5 rr            lda tmp_lo
+000175r 1  9D rr rr         sta trail_x_lo, x
+000178r 1  A5 rr            lda tmp_hi
+00017Ar 1  9D rr rr         sta trail_x_hi, x
+00017Dr 1  A5 rr            lda head_y                  ; Y stays constant
+00017Fr 1  9D rr rr         sta trail_y, x
+000182r 1               
+000182r 1                   ; Move West by MOVE_STEP for next position (older = further behind)
+000182r 1  A5 rr            lda tmp_lo
+000184r 1  38               sec
+000185r 1  E9 08            sbc #MOVE_STEP
+000187r 1  85 rr            sta tmp_lo
+000189r 1  A5 rr            lda tmp_hi
+00018Br 1  E9 00            sbc #0
+00018Dr 1  85 rr            sta tmp_hi
+00018Fr 1               
+00018Fr 1  E8               inx
+000190r 1  E0 40            cpx #64
+000192r 1  D0 DF            bne init_trail
+000194r 1               
+000194r 1  60               rts
+000195r 1               
+000195r 1               ; -----------------------------------------------------------------------------
+000195r 1               ; FRAME WAIT (VBlank sync)
+000195r 1               ; -----------------------------------------------------------------------------
+000195r 1               wait_frame:
+000195r 1  E6 rr            inc tick                    ; RNG tick
+000197r 1               
+000197r 1               wait_raster:
+000197r 1  AD 12 D0         lda $D012
+00019Ar 1  C9 FA            cmp #250
+00019Cr 1  D0 F9            bne wait_raster
+00019Er 1               wait_raster2:
+00019Er 1  AD 12 D0         lda $D012
+0001A1r 1  C9 FA            cmp #250
+0001A3r 1  F0 F9            beq wait_raster2
+0001A5r 1               
+0001A5r 1                   ; Speed control
+0001A5r 1  E6 rr            inc frame_cnt
+0001A7r 1  A5 rr            lda frame_cnt
+0001A9r 1  C5 rr            cmp speed
+0001ABr 1  90 E8            bcc wait_frame              ; Wait more frames
+0001ADr 1  A9 00            lda #0
+0001AFr 1  85 rr            sta frame_cnt
+0001B1r 1  60               rts
+0001B2r 1               
+0001B2r 1               ; -----------------------------------------------------------------------------
+0001B2r 1               ; AI MOVEMENT (Demo Mode)
+0001B2r 1               ; -----------------------------------------------------------------------------
+0001B2r 1               ai_move:
+0001B2r 1                   ; Simple apple-seeking AI
+0001B2r 1               
+0001B2r 1                   ; Compare X positions
+0001B2r 1  A5 rr            lda head_x
+0001B4r 1  C5 rr            cmp apple_x
+0001B6r 1  F0 18            beq ai_check_y
+0001B8r 1  90 0B            bcc ai_want_right
+0001BAr 1               
+0001BAr 1                   ; Want to go left (West)
+0001BAr 1  A5 rr            lda dir
+0001BCr 1  C9 03            cmp #3                      ; Can't reverse if going East
+0001BEr 1  F0 10            beq ai_check_y
+0001C0r 1  A9 02            lda #2
+0001C2r 1  85 rr            sta dir
+0001C4r 1  60               rts
+0001C5r 1               
+0001C5r 1               ai_want_right:
+0001C5r 1  A5 rr            lda dir
+0001C7r 1  C9 02            cmp #2                      ; Can't reverse if going West
+0001C9r 1  F0 05            beq ai_check_y
+0001CBr 1  A9 03            lda #3
+0001CDr 1  85 rr            sta dir
+0001CFr 1  60               rts
+0001D0r 1               
+0001D0r 1               ai_check_y:
+0001D0r 1  A5 rr            lda head_y
+0001D2r 1  C5 rr            cmp apple_y
+0001D4r 1  F0 17            beq ai_done
+0001D6r 1  90 0B            bcc ai_want_down
+0001D8r 1               
+0001D8r 1                   ; Want to go up (North)
+0001D8r 1  A5 rr            lda dir
+0001DAr 1  C9 01            cmp #1                      ; Can't reverse if going South
+0001DCr 1  F0 0F            beq ai_done
+0001DEr 1  A9 00            lda #0
+0001E0r 1  85 rr            sta dir
+0001E2r 1  60               rts
+0001E3r 1               
+0001E3r 1               ai_want_down:
+0001E3r 1  A5 rr            lda dir
+0001E5r 1  C9 00            cmp #0                      ; Can't reverse if going North
+0001E7r 1  F0 04            beq ai_done
+0001E9r 1  A9 01            lda #1
+0001EBr 1  85 rr            sta dir
+0001EDr 1               
+0001EDr 1               ai_done:
+0001EDr 1  60               rts
+0001EEr 1               
+0001EEr 1               ; -----------------------------------------------------------------------------
+0001EEr 1               ; MOVE SNAKE
+0001EEr 1               ; -----------------------------------------------------------------------------
+0001EEr 1               move_snake:
+0001EEr 1                   ; Save current position to trail
+0001EEr 1  A6 rr            ldx head_idx
+0001F0r 1  A5 rr            lda head_x
+0001F2r 1  9D rr rr         sta trail_x_lo, x
+0001F5r 1  A5 rr            lda head_x + 1
+0001F7r 1  9D rr rr         sta trail_x_hi, x
+0001FAr 1  A5 rr            lda head_y
+0001FCr 1  9D rr rr         sta trail_y, x
+0001FFr 1               
+0001FFr 1                   ; Increment head index (circular buffer)
+0001FFr 1  E8               inx
+000200r 1  8A               txa
+000201r 1  29 3F            and #$3F                    ; Wrap at 64
+000203r 1  85 rr            sta head_idx
+000205r 1               
+000205r 1                   ; Move based on direction
+000205r 1  A5 rr            lda dir
+000207r 1  C9 00            cmp #0
+000209r 1  F0 28            beq move_north
+00020Br 1  C9 01            cmp #1
+00020Dr 1  F0 2E            beq move_south
+00020Fr 1  C9 02            cmp #2
+000211r 1  F0 10            beq move_west
+000213r 1                   ; else East
+000213r 1               
+000213r 1               move_east:
+000213r 1  A5 rr            lda head_x
+000215r 1  18               clc
+000216r 1  69 08            adc #MOVE_STEP
+000218r 1  85 rr            sta head_x
+00021Ar 1  A5 rr            lda head_x + 1
+00021Cr 1  69 00            adc #0
+00021Er 1  85 rr            sta head_x + 1
+000220r 1  4C rr rr         jmp move_done
+000223r 1               
+000223r 1               move_west:
+000223r 1  A5 rr            lda head_x
+000225r 1  38               sec
+000226r 1  E9 08            sbc #MOVE_STEP
+000228r 1  85 rr            sta head_x
+00022Ar 1  A5 rr            lda head_x + 1
+00022Cr 1  E9 00            sbc #0
+00022Er 1  85 rr            sta head_x + 1
+000230r 1  4C rr rr         jmp move_done
+000233r 1               
+000233r 1               move_north:
+000233r 1  A5 rr            lda head_y
+000235r 1  38               sec
+000236r 1  E9 08            sbc #MOVE_STEP
+000238r 1  85 rr            sta head_y
+00023Ar 1  4C rr rr         jmp move_done
+00023Dr 1               
+00023Dr 1               move_south:
+00023Dr 1  A5 rr            lda head_y
+00023Fr 1  18               clc
+000240r 1  69 08            adc #MOVE_STEP
+000242r 1  85 rr            sta head_y
+000244r 1               
+000244r 1               move_done:
+000244r 1                   ; Update tail (unless growing)
+000244r 1  A5 rr            lda grow
+000246r 1  D0 08            bne skip_tail_move
+000248r 1  E6 rr            inc tail_idx
+00024Ar 1  A5 rr            lda tail_idx
+00024Cr 1  29 3F            and #$3F
+00024Er 1  85 rr            sta tail_idx
+000250r 1               skip_tail_move:
+000250r 1  A9 00            lda #0
+000252r 1  85 rr            sta grow
+000254r 1  60               rts
+000255r 1               
+000255r 1               ; -----------------------------------------------------------------------------
+000255r 1               ; CHECK COLLISION
+000255r 1               ; -----------------------------------------------------------------------------
+000255r 1               check_collision:
+000255r 1                   ; Check wall collision (use pixel boundaries)
+000255r 1  A5 rr            lda head_x
+000257r 1  C9 28            cmp #MIN_X + 16             ; Left wall
+000259r 1  90 18            bcc hit_wall
+00025Br 1  C9 DF            cmp #MAX_X - 32             ; Right wall (approximate)
+00025Dr 1  B0 03            bcs check_right_msb
+00025Fr 1  4C rr rr         jmp check_top
+000262r 1               
+000262r 1               check_right_msb:
+000262r 1  A5 rr            lda head_x + 1
+000264r 1  D0 0D            bne hit_wall                ; X > 255, definitely hit wall
+000266r 1               
+000266r 1               check_top:
+000266r 1  A5 rr            lda head_y
+000268r 1  C9 42            cmp #MIN_Y + 16             ; Top wall
+00026Ar 1  90 07            bcc hit_wall
+00026Cr 1  C9 D5            cmp #MAX_Y - 16             ; Bottom wall
+00026Er 1  B0 03            bcs hit_wall
+000270r 1  4C rr rr         jmp check_apple
+000273r 1               
+000273r 1               hit_wall:
+000273r 1  A9 01            lda #1
+000275r 1  85 rr            sta game_over
+000277r 1  60               rts
+000278r 1               
+000278r 1               check_apple:
+000278r 1                   ; Check if head overlaps apple (within 16 pixels)
+000278r 1  A5 rr            lda head_x
+00027Ar 1  38               sec
+00027Br 1  E5 rr            sbc apple_x
+00027Dr 1  B0 05            bcs apple_diff_x_pos
+00027Fr 1  49 FF            eor #$FF
+000281r 1  18               clc
+000282r 1  69 01            adc #1
+000284r 1               apple_diff_x_pos:
+000284r 1  C9 10            cmp #16                     ; Within 16 pixels?
+000286r 1  B0 27            bcs no_apple
+000288r 1               
+000288r 1  A5 rr            lda head_y
+00028Ar 1  38               sec
+00028Br 1  E5 rr            sbc apple_y
+00028Dr 1  B0 05            bcs apple_diff_y_pos
+00028Fr 1  49 FF            eor #$FF
+000291r 1  18               clc
+000292r 1  69 01            adc #1
+000294r 1               apple_diff_y_pos:
+000294r 1  C9 10            cmp #16
+000296r 1  B0 17            bcs no_apple
+000298r 1               
+000298r 1                   ; Ate the apple!
+000298r 1  E6 rr            inc score
+00029Ar 1  A9 01            lda #1
+00029Cr 1  85 rr            sta grow
+00029Er 1  20 rr rr         jsr spawn_apple
+0002A1r 1               
+0002A1r 1                   ; Increase speed every 5 apples
+0002A1r 1  A5 rr            lda score
+0002A3r 1  29 07            and #$07
+0002A5r 1  D0 08            bne no_apple
+0002A7r 1  A5 rr            lda speed
+0002A9r 1  C9 02            cmp #2
+0002ABr 1  90 02            bcc no_apple
+0002ADr 1  C6 rr            dec speed
+0002AFr 1               
+0002AFr 1               no_apple:
+0002AFr 1  60               rts
+0002B0r 1               
+0002B0r 1               ; -----------------------------------------------------------------------------
+0002B0r 1               ; SPAWN APPLE
+0002B0r 1               ; -----------------------------------------------------------------------------
+0002B0r 1               spawn_apple:
+0002B0r 1                   ; Random X position (40-200)
+0002B0r 1  A5 rr            lda tick
+0002B2r 1  4D 12 D0         eor $D012
+0002B5r 1  29 7F            and #$7F                    ; 0-127
+0002B7r 1  18               clc
+0002B8r 1  69 32            adc #50                     ; 50-177
+0002BAr 1  85 rr            sta apple_x
+0002BCr 1  A9 00            lda #0
+0002BEr 1  85 rr            sta apple_x + 1
+0002C0r 1               
+0002C0r 1                   ; Random Y position (60-200)
+0002C0r 1  A5 rr            lda tick
+0002C2r 1  4D 11 D0         eor $D011
+0002C5r 1  29 7F            and #$7F
+0002C7r 1  18               clc
+0002C8r 1  69 3C            adc #60
+0002CAr 1  85 rr            sta apple_y
+0002CCr 1               
+0002CCr 1  60               rts
+0002CDr 1               
+0002CDr 1               ; -----------------------------------------------------------------------------
+0002CDr 1               ; UPDATE SPRITES
+0002CDr 1               ; -----------------------------------------------------------------------------
+0002CDr 1               update_sprites:
+0002CDr 1                   ; Update head sprite position (add VIC-II offset)
+0002CDr 1  A5 rr            lda head_x
+0002CFr 1  18               clc
+0002D0r 1  69 18            adc #SPRITE_X_OFFSET
+0002D2r 1  8D 00 D0         sta SPR0_X
+0002D5r 1  A5 rr            lda head_y
+0002D7r 1  18               clc
+0002D8r 1  69 32            adc #SPRITE_Y_OFFSET
+0002DAr 1  8D 01 D0         sta SPR0_Y
+0002DDr 1               
+0002DDr 1                   ; Update apple sprite position (add VIC-II offset)
+0002DDr 1  A5 rr            lda apple_x
+0002DFr 1  18               clc
+0002E0r 1  69 18            adc #SPRITE_X_OFFSET
+0002E2r 1  8D 02 D0         sta SPR1_X
+0002E5r 1  A5 rr            lda apple_y
+0002E7r 1  18               clc
+0002E8r 1  69 32            adc #SPRITE_Y_OFFSET
+0002EAr 1  8D 03 D0         sta SPR1_Y
+0002EDr 1               
+0002EDr 1                   ; Update X MSB for head and apple
+0002EDr 1                   ; Check if head_x + offset > 255
+0002EDr 1  A9 00            lda #0
+0002EFr 1  A6 rr            ldx head_x + 1
+0002F1r 1  D0 07            bne set_head_msb            ; Already > 255
+0002F3r 1  A5 rr            lda head_x
+0002F5r 1  18               clc
+0002F6r 1  69 18            adc #SPRITE_X_OFFSET
+0002F8r 1  90 05            bcc no_head_msb_check       ; No carry = no overflow
+0002FAr 1               set_head_msb:
+0002FAr 1  A9 01            lda #$01                    ; Set bit 0 for sprite 0
+0002FCr 1  4C rr rr         jmp check_apple_msb
+0002FFr 1               no_head_msb_check:
+0002FFr 1  A9 00            lda #0
+000301r 1               check_apple_msb:
+000301r 1  48               pha
+000302r 1  A5 rr            lda apple_x + 1
+000304r 1  D0 07            bne set_apple_msb           ; Already > 255
+000306r 1  A5 rr            lda apple_x
+000308r 1  18               clc
+000309r 1  69 18            adc #SPRITE_X_OFFSET
+00030Br 1  90 06            bcc no_apple_msb_check
+00030Dr 1               set_apple_msb:
+00030Dr 1  68               pla
+00030Er 1  09 02            ora #$02                    ; Set bit 1 for sprite 1
+000310r 1  4C rr rr         jmp store_msb
+000313r 1               no_apple_msb_check:
+000313r 1  68               pla
+000314r 1               store_msb:
+000314r 1  8D 10 D0         sta SPR_X_MSB
+000317r 1               
+000317r 1                   ; Update body segments (sprites 2-7)
+000317r 1                   ; Body follows head through the trail buffer
+000317r 1                   ; head_idx points to next empty slot, so head_idx-1 is where head just was
+000317r 1  A5 rr            lda head_idx
+000319r 1  38               sec
+00031Ar 1  E9 01            sbc #1                      ; Start at previous head position
+00031Cr 1  29 3F            and #$3F
+00031Er 1  AA               tax
+00031Fr 1               
+00031Fr 1  A0 00            ldy #0                      ; Sprite register offset (0, 2, 4, 6, 8, 10)
+000321r 1  84 rr            sty temp_count              ; Use temp for sprite count
+000323r 1               body_loop:
+000323r 1                   ; Get trail position and add offset
+000323r 1  BD rr rr         lda trail_x_lo, x
+000326r 1  18               clc
+000327r 1  69 18            adc #SPRITE_X_OFFSET
+000329r 1  99 04 D0         sta SPR0_X + 4, y           ; Sprite 2+ X (offset by 4 bytes)
+00032Cr 1  BD rr rr         lda trail_y, x
+00032Fr 1  18               clc
+000330r 1  69 32            adc #SPRITE_Y_OFFSET
+000332r 1  99 05 D0         sta SPR0_Y + 4, y           ; Sprite 2+ Y
+000335r 1               
+000335r 1                   ; Move back 3 positions in trail for next body segment (24 pixels = sprite width)
+000335r 1  8A               txa
+000336r 1  38               sec
+000337r 1  E9 03            sbc #3                      ; Space segments by 3 moves (24 pixels)
+000339r 1  29 3F            and #$3F
+00033Br 1  AA               tax
+00033Cr 1               
+00033Cr 1                   ; Next sprite
+00033Cr 1  C8               iny
+00033Dr 1  C8               iny                         ; Add 2 (X and Y per sprite)
+00033Er 1  E6 rr            inc temp_count
+000340r 1  A5 rr            lda temp_count
+000342r 1  C9 06            cmp #6                      ; 6 body sprites
+000344r 1  D0 DD            bne body_loop
+000346r 1               
+000346r 1  60               rts
+000347r 1               
+000347r 1               ; -----------------------------------------------------------------------------
+000347r 1               ; DRAW SCORE
+000347r 1               ; -----------------------------------------------------------------------------
+000347r 1               draw_score:
+000347r 1  A5 rr            lda score
+000349r 1                   ; Convert to hex display
+000349r 1  48               pha
+00034Ar 1  4A               lsr
+00034Br 1  4A               lsr
+00034Cr 1  4A               lsr
+00034Dr 1  4A               lsr
+00034Er 1  AA               tax
+00034Fr 1  BD rr rr         lda hex_chars, x
+000352r 1  8D 2F 04         sta SCREEN_RAM + 47         ; Score position
+000355r 1  68               pla
+000356r 1  29 0F            and #$0F
+000358r 1  AA               tax
+000359r 1  BD rr rr         lda hex_chars, x
+00035Cr 1  8D 30 04         sta SCREEN_RAM + 48
+00035Fr 1  60               rts
+000360r 1               
+000360r 1               ; -----------------------------------------------------------------------------
+000360r 1               ; DATA
+000360r 1               ; -----------------------------------------------------------------------------
+000360r 1               .segment "RODATA"
+000000r 1               
+000000r 1               score_text:
+000000r 1  13 03 0F 12      .byte 19, 3, 15, 18, 5, 58, 0   ; "SCORE:" in screen codes
+000004r 1  05 3A 00     
+000007r 1               
+000007r 1               hex_chars:
+000007r 1  30 31 32 33      .byte 48, 49, 50, 51, 52, 53, 54, 55     ; 0-7
+00000Br 1  34 35 36 37  
+00000Fr 1  38 39 01 02      .byte 56, 57, 1, 2, 3, 4, 5, 6           ; 8-9, A-F
+000013r 1  03 04 05 06  
+000017r 1               
+000017r 1               ; -----------------------------------------------------------------------------
+000017r 1               ; SPRITE DATA (24x21 pixels = 63 bytes each, padded to 64)
+000017r 1               ; Placed directly at $2000 by linker
+000017r 1               ; -----------------------------------------------------------------------------
+000017r 1               .segment "SPRITES"
+000000r 1               
+000000r 1               ; Snake Head Sprite - with eyes and forked tongue (Block 128 = $2000)
+000000r 1               sprite_head:
+000000r 1  0F F0 00         .byte $0F, $F0, $00   ; Row 0  - top curve
+000003r 1  3F FC 00         .byte $3F, $FC, $00   ; Row 1
+000006r 1  7F FE 00         .byte $7F, $FE, $00   ; Row 2
+000009r 1  7F FE 00         .byte $7F, $FE, $00   ; Row 3
+00000Cr 1  FF FF 00         .byte $FF, $FF, $00   ; Row 4
+00000Fr 1  E7 E7 00         .byte $E7, $E7, $00   ; Row 5  - eyes (holes)
+000012r 1  E7 E7 00         .byte $E7, $E7, $00   ; Row 6  - eyes (holes)
+000015r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 7
+000018r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 8
+00001Br 1  FF FF 00         .byte $FF, $FF, $00   ; Row 9
+00001Er 1  7F FE 00         .byte $7F, $FE, $00   ; Row 10
+000021r 1  7F FE 00         .byte $7F, $FE, $00   ; Row 11
+000024r 1  3F FC 00         .byte $3F, $FC, $00   ; Row 12
+000027r 1  1F F8 00         .byte $1F, $F8, $00   ; Row 13
+00002Ar 1  0F F0 00         .byte $0F, $F0, $00   ; Row 14
+00002Dr 1  07 E0 00         .byte $07, $E0, $00   ; Row 15
+000030r 1  03 C0 00         .byte $03, $C0, $00   ; Row 16
+000033r 1  01 80 00         .byte $01, $80, $00   ; Row 17 - tongue
+000036r 1  03 C0 00         .byte $03, $C0, $00   ; Row 18 - tongue fork
+000039r 1  02 40 00         .byte $02, $40, $00   ; Row 19 - tongue fork
+00003Cr 1  00 00 00         .byte $00, $00, $00   ; Row 20
+00003Fr 1  00               .byte $00            ; Padding to 64 bytes
+000040r 1               
+000040r 1               ; Apple Sprite - SQUARE shape for testing (Block 129 = $2040)
+000040r 1               sprite_apple:
+000040r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 0  - solid bar
+000043r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 1  - solid bar
+000046r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 2  - solid bar
+000049r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 3  - solid bar
+00004Cr 1  FF FF 00         .byte $FF, $FF, $00   ; Row 4  - solid bar
+00004Fr 1  FF FF 00         .byte $FF, $FF, $00   ; Row 5  - solid bar
+000052r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 6  - solid bar
+000055r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 7  - solid bar
+000058r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 8  - solid bar
+00005Br 1  FF FF 00         .byte $FF, $FF, $00   ; Row 9  - solid bar
+00005Er 1  FF FF 00         .byte $FF, $FF, $00   ; Row 10 - solid bar
+000061r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 11 - solid bar
+000064r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 12 - solid bar
+000067r 1  FF FF 00         .byte $FF, $FF, $00   ; Row 13 - solid bar
+00006Ar 1  FF FF 00         .byte $FF, $FF, $00   ; Row 14 - solid bar
+00006Dr 1  FF FF 00         .byte $FF, $FF, $00   ; Row 15 - solid bar
+000070r 1  00 00 00         .byte $00, $00, $00   ; Row 16
+000073r 1  00 00 00         .byte $00, $00, $00   ; Row 17
+000076r 1  00 00 00         .byte $00, $00, $00   ; Row 18
+000079r 1  00 00 00         .byte $00, $00, $00   ; Row 19
+00007Cr 1  00 00 00         .byte $00, $00, $00   ; Row 20
+00007Fr 1  00               .byte $00            ; Padding to 64 bytes
+000080r 1               
+000080r 1               ; Body Segment Sprite - SMALL DIAMOND for testing (Block 130 = $2080)
+000080r 1               sprite_body:
+000080r 1  00 00 00         .byte $00, $00, $00   ; Row 0
+000083r 1  00 00 00         .byte $00, $00, $00   ; Row 1
+000086r 1  00 00 00         .byte $00, $00, $00   ; Row 2
+000089r 1  00 00 00         .byte $00, $00, $00   ; Row 3
+00008Cr 1  00 00 00         .byte $00, $00, $00   ; Row 4
+00008Fr 1  00 00 00         .byte $00, $00, $00   ; Row 5
+000092r 1  01 80 00         .byte $01, $80, $00   ; Row 6  - tiny dot
+000095r 1  03 C0 00         .byte $03, $C0, $00   ; Row 7
+000098r 1  07 E0 00         .byte $07, $E0, $00   ; Row 8
+00009Br 1  0F F0 00         .byte $0F, $F0, $00   ; Row 9  - center
+00009Er 1  07 E0 00         .byte $07, $E0, $00   ; Row 10
+0000A1r 1  03 C0 00         .byte $03, $C0, $00   ; Row 11
+0000A4r 1  01 80 00         .byte $01, $80, $00   ; Row 12 - tiny dot
+0000A7r 1  00 00 00         .byte $00, $00, $00   ; Row 13
+0000AAr 1  00 00 00         .byte $00, $00, $00   ; Row 14
+0000ADr 1  00 00 00         .byte $00, $00, $00   ; Row 15
+0000B0r 1  00 00 00         .byte $00, $00, $00   ; Row 16
+0000B3r 1  00 00 00         .byte $00, $00, $00   ; Row 17
+0000B6r 1  00 00 00         .byte $00, $00, $00   ; Row 18
+0000B9r 1  00 00 00         .byte $00, $00, $00   ; Row 19
+0000BCr 1  00 00 00         .byte $00, $00, $00   ; Row 20
+0000BFr 1  00               .byte $00            ; Padding to 64 bytes
+0000BFr 1               
