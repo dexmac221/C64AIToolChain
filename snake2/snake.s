@@ -39,6 +39,17 @@ JOYSTICK    = $DC00
 BORDER      = $D020
 BG_COLOR    = $D021
 
+; --- SID Sound Chip ---
+SID_BASE    = $D400
+SID_V1_FREQ_LO = $D400      ; Voice 1 frequency low
+SID_V1_FREQ_HI = $D401      ; Voice 1 frequency high
+SID_V1_PW_LO = $D402        ; Pulse width low
+SID_V1_PW_HI = $D403        ; Pulse width high
+SID_V1_CTRL = $D404         ; Control: gate, waveform
+SID_V1_AD   = $D405         ; Attack/Decay
+SID_V1_SR   = $D406         ; Sustain/Release
+SID_VOLUME  = $D418         ; Master volume + filter mode
+
 ; --- Game Constants ---
 SPRITE_BASE = $2000     ; Sprite data starts here (block 128 = $2000/64)
 SPRITE_BLOCK = 128      ; First sprite block number ($2000/64)
@@ -50,7 +61,7 @@ MIN_Y       = 50        ; Top edge
 MAX_Y       = 229       ; Bottom edge
 
 ; Movement step (in pixels)
-MOVE_STEP   = 8         ; 8 pixels = 1 character cell
+MOVE_STEP   = 4         ; 4 pixels for tighter snake movement
 
 ; Character codes for background
 CHAR_SPACE  = 32
@@ -66,6 +77,8 @@ apple_x:    .res 2      ; 16-bit Apple X
 apple_y:    .res 1      ; Apple Y
 score_lo:   .res 1      ; Score low byte (0-255)
 score_hi:   .res 1      ; Score high byte (for 256-999)
+hiscore_lo: .res 1      ; High score low byte
+hiscore_hi: .res 1      ; High score high byte
 frame_cnt:  .res 1
 tick:       .res 1      ; RNG counter
 ptr_lo:     .res 1
@@ -103,6 +116,14 @@ next_line:
 start:
     sei
     cld
+    
+    ; Initialize SID for sound effects
+    jsr init_sound
+    
+    ; Initialize high score (once at start)
+    lda #0
+    sta hiscore_lo
+    sta hiscore_hi
     
     ; Start in demo mode
     lda #1
@@ -145,6 +166,7 @@ continue_game:
     jsr check_collision
     jsr update_sprites
     jsr draw_score
+    jsr draw_hiscore
     
     jmp game_loop
 
@@ -160,6 +182,9 @@ wait_fire_release2:
     jmp restart_game            ; Restart game in player mode
 
 game_over_handler:
+    ; Check if we beat high score
+    jsr check_high_score
+    
     lda demo_mode
     beq game_over_loop          ; Player mode - just flash
     ; Demo mode - restart demo after brief delay
@@ -446,48 +471,72 @@ score_label_done:
     rts
 
 ; -----------------------------------------------------------------------------
-; DRAW SPARSE BUSHES - scattered across play area with better distribution
+; DRAW SPARSE BUSHES - fixed grid placement for guaranteed even distribution
+; Places 16 bushes in a 4x4 grid pattern across the play area
 ; -----------------------------------------------------------------------------
 draw_sparse_bushes:
-    ldx #12                     ; Reduced: 12 bushes (was 20)
+    ; Row 4 (top area)
+    lda #4
+    ldx #5
+    jsr place_bush_at
+    lda #4
+    ldx #15
+    jsr place_bush_at
+    lda #4
+    ldx #25
+    jsr place_bush_at
+    lda #4
+    ldx #35
+    jsr place_bush_at
+    
+    ; Row 9
+    lda #9
+    ldx #8
+    jsr place_bush_at
+    lda #9
+    ldx #18
+    jsr place_bush_at
+    lda #9
+    ldx #28
+    jsr place_bush_at
+    lda #9
+    ldx #37
+    jsr place_bush_at
+    
+    ; Row 15
+    lda #15
+    ldx #3
+    jsr place_bush_at
+    lda #15
+    ldx #12
+    jsr place_bush_at
+    lda #15
+    ldx #22
+    jsr place_bush_at
+    lda #15
+    ldx #32
+    jsr place_bush_at
+    
+    ; Row 21 (bottom area)
+    lda #21
+    ldx #6
+    jsr place_bush_at
+    lda #21
+    ldx #16
+    jsr place_bush_at
+    lda #21
+    ldx #26
+    jsr place_bush_at
+    lda #21
+    ldx #36
+    jsr place_bush_at
+    
+    rts
 
-sparse_bush_loop:
-    stx temp_count
-
-    ; Get random row (3-21) using modulo approach
-    lda $D012
-    eor tick
-    inc tick
-    clc
-    adc temp_count              ; Add loop counter for more variation
-@row_mod:
-    cmp #19                     ; Want 19 possible rows (3-21)
-    bcc @row_done
-    sec
-    sbc #19                     ; Keep subtracting until < 19
-    jmp @row_mod
-@row_done:
-    clc
-    adc #3                      ; Offset to row 3-21
-    sta tmp_hi                  ; Save row
-
-    ; Get random column (4-35) using modulo approach
-    lda $D012
-    eor tick
-    inc tick
-    clc
-    adc temp_count              ; Add loop counter for variation
-    eor tmp_hi                  ; XOR with row for more randomness
-@col_mod:
-    cmp #32                     ; Want 32 possible columns (4-35)
-    bcc @col_done
-    sec
-    sbc #32                     ; Keep subtracting until < 32
-    jmp @col_mod
-@col_done:
-    clc
-    adc #4                      ; Offset to column 4-35
-    sta tmp_lo                  ; Save column
+; Place a bush at row A, column X
+place_bush_at:
+    sta tmp_hi                  ; Row
+    stx tmp_lo                  ; Column
     
     ; Calculate screen offset: row * 40 + column
     lda tmp_hi                  ; Row
@@ -542,23 +591,18 @@ sparse_bush_loop:
     lda #5                      ; Green
     sta (ptr_lo), y
     
-    ldx temp_count
-    dex
-    beq @done
-    jmp sparse_bush_loop
-@done:
     rts
 
 ; -----------------------------------------------------------------------------
 ; VARIABLE INITIALIZATION
 ; -----------------------------------------------------------------------------
 init_vars:
-    ; Initialize snake position (center of play area)
-    lda #140                    ; X position (low byte)
+    ; Initialize snake position (safe center position)
+    lda #160                    ; X position (low byte) - center-right for safe eastward movement
     sta head_x
     lda #0                      ; X position (high byte)
     sta head_x + 1
-    lda #140                    ; Y position
+    lda #140                    ; Y position - center
     sta head_y
     
     lda #3                      ; Start moving East
@@ -572,7 +616,7 @@ init_vars:
     sta game_over
     sta grow
     
-    lda #21                     ; Initial length (7 segments × 3 spacing)
+    lda #5                      ; Initial length - very short snake (5 segments)
     sta head_idx
     
     lda #8                      ; Speed (frames between moves)
@@ -582,35 +626,48 @@ init_vars:
     lda $D012
     sta tick
     
-    ; Initialize trail with positions spread out behind head
-    ; Snake starts going East, so trail extends to the West
+    ; Initialize trail - snake as a horizontal line going West from head
+    ; Only initialize the segments we actually use (0 to head_idx-1)
+    ; All segments at same Y, X decreasing by 8 pixels each
     ldx #0
-    lda head_x                  ; Start with head X
+    lda head_x
     sta tmp_lo
-    lda head_x + 1
-    sta tmp_hi
 init_trail:
-    ; Store current position
+    cpx head_idx
+    beq init_trail_done
+    
+    ; Store position for this segment
     lda tmp_lo
     sta trail_x_lo, x
-    lda tmp_hi
+    lda #0
     sta trail_x_hi, x
-    lda head_y                  ; Y stays constant
+    lda head_y
     sta trail_y, x
     
-    ; Move West by MOVE_STEP for next position (older = further behind)
+    ; Move 4 pixels West for next (older) segment
     lda tmp_lo
     sec
-    sbc #MOVE_STEP
+    sbc #4
     sta tmp_lo
-    lda tmp_hi
-    sbc #0
-    sta tmp_hi
     
     inx
-    cpx #64
-    bne init_trail
+    jmp init_trail
     
+init_trail_done:
+    ; Fill rest of buffer with safe position (off-screen but valid)
+init_trail_fill:
+    cpx #64
+    beq init_trail_complete
+    lda #80                     ; Safe X
+    sta trail_x_lo, x
+    lda #0
+    sta trail_x_hi, x
+    lda #140                    ; Safe Y
+    sta trail_y, x
+    inx
+    jmp init_trail_fill
+    
+init_trail_complete:
     rts
 
 ; -----------------------------------------------------------------------------
@@ -652,9 +709,9 @@ ai_move:
 ai_no_obstacle:
     ; First check if we're near a wall and need to turn
 
-    ; Check if too close to left wall (X < 48)
+    ; Check if too close to left wall (X < 40)
     lda head_x
-    cmp #48
+    cmp #40
     bcs ai_not_left_wall
     ; Near left wall - must not go West
     lda dir
@@ -669,9 +726,9 @@ ai_no_obstacle:
     jmp ai_turn_south
 ai_not_left_wall:
 
-    ; Check if too close to right wall (X > 200)
+    ; Check if too close to right wall (X > 220)
     lda head_x
-    cmp #200
+    cmp #220
     bcc ai_not_right_wall
     ; Near right wall - must not go East
     lda dir
@@ -685,9 +742,9 @@ ai_not_left_wall:
     jmp ai_turn_south
 ai_not_right_wall:
 
-    ; Check if too close to top wall (Y < 72)
+    ; Check if too close to top wall (Y < 60)
     lda head_y
-    cmp #72
+    cmp #60
     bcs ai_not_top_wall
     ; Near top wall - must not go North
     lda dir
@@ -701,9 +758,9 @@ ai_not_right_wall:
     jmp ai_turn_east
 ai_not_top_wall:
 
-    ; Check if too close to bottom wall (Y > 200)
+    ; Check if too close to bottom wall (Y > 220)
     lda head_y
-    cmp #200
+    cmp #220
     bcc ai_not_bottom_wall
     ; Near bottom wall - must not go South
     lda dir
@@ -727,7 +784,7 @@ ai_not_bottom_wall:
 @go_left:
     ; Want to go left (West) - but check if safe
     lda head_x
-    cmp #56                     ; Not too close to left wall
+    cmp #48                     ; Not too close to left wall
     bcc ai_check_y              ; Too close, try Y instead
     lda dir
     cmp #3                      ; Can't reverse if going East
@@ -739,7 +796,7 @@ ai_not_bottom_wall:
 ai_want_right:
     ; Check if safe to go right
     lda head_x
-    cmp #192                    ; Not too close to right wall
+    cmp #216                    ; Not too close to right wall
     bcs ai_check_y              ; Too close, try Y instead
     lda dir
     cmp #2                      ; Can't reverse if going West
@@ -997,8 +1054,11 @@ read_joy:
     lda dir
     cmp #1                      ; Can't reverse if going South
     beq joy_done
+    cmp #0                      ; Already going North?
+    beq joy_done
     lda #0
     sta dir
+    jsr sound_turn              ; Play turn sound
     rts
 joy_not_up:
 
@@ -1009,8 +1069,11 @@ joy_not_up:
     lda dir
     cmp #0                      ; Can't reverse if going North
     beq joy_done
+    cmp #1                      ; Already going South?
+    beq joy_done
     lda #1
     sta dir
+    jsr sound_turn              ; Play turn sound
     rts
 joy_not_down:
 
@@ -1021,8 +1084,11 @@ joy_not_down:
     lda dir
     cmp #3                      ; Can't reverse if going East
     beq joy_done
+    cmp #2                      ; Already going West?
+    beq joy_done
     lda #2
     sta dir
+    jsr sound_turn              ; Play turn sound
     rts
 joy_not_left:
 
@@ -1033,8 +1099,11 @@ joy_not_left:
     lda dir
     cmp #2                      ; Can't reverse if going West
     beq joy_done
+    cmp #3                      ; Already going East?
+    beq joy_done
     lda #3
     sta dir
+    jsr sound_turn              ; Play turn sound
     
 joy_done:
     rts
@@ -1139,13 +1208,15 @@ check_top:
     jmp check_bush_collision
 
 hit_wall:
+    jsr sound_game_over         ; Play death sound
     lda #1
     sta game_over
     rts
 
 ; Check if snake head hit a bush (character 102)
+; DISABLED - bushes are decorative only
 check_bush_collision:
-    ; Convert sprite position to screen coordinates
+    jmp check_apple             ; Skip bush collision check
     ; Screen X = (head_x - 24 + 4) / 8  (offset to center of sprite)
     ; Screen Y = (head_y - 50 + 4) / 8  (offset to center of sprite)
 
@@ -1215,15 +1286,13 @@ check_bush_collision:
     jmp check_apple
 
 hit_bush:
+    jsr sound_game_over         ; Play death sound
     lda #1
     sta game_over
     rts
 
 check_apple:
-    ; First check self-collision (skip first few segments near head)
-    jsr check_self_collision
-    lda game_over
-    bne collision_done
+    ; Self-collision disabled - snake only collides with walls
     
     ; Check if head overlaps apple (within 16 pixels)
     lda head_x
@@ -1249,6 +1318,7 @@ apple_diff_y_pos:
     bcs no_apple
     
     ; Ate the apple!
+    jsr sound_eat               ; Play eat sound!
     inc score_lo
     bne :+
     inc score_hi                ; Increment high byte on overflow
@@ -1296,64 +1366,10 @@ collision_done:
     rts
 
 ; -----------------------------------------------------------------------------
-; CHECK SELF COLLISION
-; Check if head overlaps any body segment (skip first 4 near head)
+; CHECK SELF COLLISION - DISABLED
+; Snake can only collide with walls now
 ; -----------------------------------------------------------------------------
 check_self_collision:
-    ; Start checking from segment 4 (skip segments too close to head)
-    lda tail_idx
-    clc
-    adc #6                      ; Start 6 segments from tail
-    and #63
-    tax
-    
-    lda head_idx
-    sec
-    sbc #4                      ; Don't check 4 segments closest to head
-    and #63
-    sta tmp_lo                  ; End position
-    
-self_check_loop:
-    cpx tmp_lo
-    beq self_check_done         ; Checked all segments
-    
-    ; Compare head X with segment X
-    lda head_x
-    sec
-    sbc trail_x_lo, x
-    bcs self_x_pos
-    eor #$FF
-    clc
-    adc #1
-self_x_pos:
-    cmp #12                     ; Within 12 pixels?
-    bcs self_next               ; Not close enough in X
-    
-    ; Compare head Y with segment Y
-    lda head_y
-    sec
-    sbc trail_y, x
-    bcs self_y_pos
-    eor #$FF
-    clc
-    adc #1
-self_y_pos:
-    cmp #12                     ; Within 12 pixels?
-    bcs self_next               ; Not close enough in Y
-    
-    ; Collision! Game over
-    lda #1
-    sta game_over
-    rts
-    
-self_next:
-    inx
-    txa
-    and #63
-    tax
-    jmp self_check_loop
-    
-self_check_done:
     rts
 
 ; -----------------------------------------------------------------------------
@@ -1457,10 +1473,10 @@ body_loop:
     adc #SPRITE_Y_OFFSET
     sta SPR0_Y + 4, y           ; Sprite 2+ Y
     
-    ; Move back 3 positions in trail for next body segment (24 pixels = sprite width)
+    ; Move back 2 positions in trail for next body segment (8 pixels = tight spacing)
     txa
     sec
-    sbc #3                      ; Space segments by 3 moves (24 pixels)
+    sbc #2                      ; Space segments by 2 moves (8 pixels)
     and #$3F
     tax
     
@@ -1529,6 +1545,214 @@ tens_done:
     rts
 
 ; -----------------------------------------------------------------------------
+; CHECK HIGH SCORE - Update if current score is higher
+; -----------------------------------------------------------------------------
+check_high_score:
+    ; Compare score_hi with hiscore_hi first
+    lda score_hi
+    cmp hiscore_hi
+    bcc not_new_high            ; score_hi < hiscore_hi, not new high
+    bne new_high_score          ; score_hi > hiscore_hi, new high
+    
+    ; High bytes equal, compare low bytes
+    lda score_lo
+    cmp hiscore_lo
+    bcc not_new_high            ; score_lo < hiscore_lo
+    beq not_new_high            ; equal, not new (need > not >=)
+    
+new_high_score:
+    ; Copy current score to high score
+    lda score_lo
+    sta hiscore_lo
+    lda score_hi
+    sta hiscore_hi
+    
+not_new_high:
+    rts
+
+; -----------------------------------------------------------------------------
+; DRAW HIGH SCORE (next to regular score)
+; -----------------------------------------------------------------------------
+draw_hiscore:
+    ; Draw "HI:" label at position 30
+    lda #8                      ; 'H'
+    sta SCREEN_RAM + 70
+    lda #9                      ; 'I'
+    sta SCREEN_RAM + 71
+    lda #58                     ; ':'
+    sta SCREEN_RAM + 72
+    
+    ; Set color to yellow
+    lda #7
+    sta COLOR_RAM + 70
+    sta COLOR_RAM + 71
+    sta COLOR_RAM + 72
+    sta COLOR_RAM + 73
+    sta COLOR_RAM + 74
+    sta COLOR_RAM + 75
+    
+    ; Convert high score to decimal
+    lda hiscore_lo
+    sta tmp_lo
+    lda hiscore_hi
+    sta tmp_hi
+    
+    ; Hundreds
+    ldx #0
+hi_hundreds_loop:
+    lda tmp_lo
+    sec
+    sbc #100
+    tay
+    lda tmp_hi
+    sbc #0
+    bcc hi_hundreds_done
+    sta tmp_hi
+    sty tmp_lo
+    inx
+    jmp hi_hundreds_loop
+hi_hundreds_done:
+    txa
+    clc
+    adc #48
+    sta SCREEN_RAM + 73
+    
+    ; Tens
+    lda tmp_lo
+    ldx #0
+    sec
+hi_tens_loop:
+    sbc #10
+    bcc hi_tens_done
+    inx
+    bne hi_tens_loop
+hi_tens_done:
+    adc #10
+    pha
+    txa
+    clc
+    adc #48
+    sta SCREEN_RAM + 74
+    pla
+    clc
+    adc #48
+    sta SCREEN_RAM + 75
+    rts
+
+; -----------------------------------------------------------------------------
+; SOUND INITIALIZATION
+; -----------------------------------------------------------------------------
+init_sound:
+    ; Clear all SID registers
+    ldx #24
+    lda #0
+clear_sid:
+    sta SID_BASE, x
+    dex
+    bpl clear_sid
+    
+    ; Set master volume to max
+    lda #$0F
+    sta SID_VOLUME
+    
+    ; Set up voice 1 for sound effects
+    ; Attack=0, Decay=8 (quick)
+    lda #$08
+    sta SID_V1_AD
+    ; Sustain=0, Release=4
+    lda #$04
+    sta SID_V1_SR
+    
+    rts
+
+; -----------------------------------------------------------------------------
+; SOUND: EAT APPLE (quick rising blip)
+; -----------------------------------------------------------------------------
+sound_eat:
+    ; High-pitched blip
+    lda #$30                    ; Frequency low
+    sta SID_V1_FREQ_LO
+    lda #$20                    ; Frequency high (~2kHz)
+    sta SID_V1_FREQ_HI
+    
+    ; Triangle wave + gate on
+    lda #$11
+    sta SID_V1_CTRL
+    
+    ; Let it play briefly then gate off
+    ldx #10
+eat_delay:
+    dex
+    bne eat_delay
+    
+    ; Gate off
+    lda #$10
+    sta SID_V1_CTRL
+    rts
+
+; -----------------------------------------------------------------------------
+; SOUND: GAME OVER (descending tone)
+; -----------------------------------------------------------------------------
+sound_game_over:
+    ; Start with high frequency
+    lda #$00
+    sta SID_V1_FREQ_LO
+    lda #$30                    ; High note
+    sta SID_V1_FREQ_HI
+    
+    ; Sawtooth wave + gate on
+    lda #$21
+    sta SID_V1_CTRL
+    
+    ; Descend through frequencies
+    ldx #48                     ; Number of steps
+descend_loop:
+    ; Wait a bit
+    ldy #60
+descend_wait:
+    dey
+    bne descend_wait
+    
+    ; Lower frequency
+    lda SID_V1_FREQ_HI
+    sec
+    sbc #1
+    sta SID_V1_FREQ_HI
+    
+    dex
+    bne descend_loop
+    
+    ; Gate off
+    lda #$20
+    sta SID_V1_CTRL
+    rts
+
+; -----------------------------------------------------------------------------
+; SOUND: DIRECTION CHANGE (subtle click)
+; -----------------------------------------------------------------------------
+sound_turn:
+    ; Very short noise burst
+    lda #$50
+    sta SID_V1_FREQ_LO
+    lda #$08
+    sta SID_V1_FREQ_HI
+    
+    ; Noise wave + gate on
+    lda #$81
+    sta SID_V1_CTRL
+    
+    ; Very brief
+    ldx #5
+turn_delay:
+    dex
+    bne turn_delay
+    
+    ; Gate off
+    lda #$80
+    sta SID_V1_CTRL
+    rts
+
+; -----------------------------------------------------------------------------
 ; DATA
 ; -----------------------------------------------------------------------------
 .segment "RODATA"
@@ -1550,75 +1774,75 @@ press_text:
 ; -----------------------------------------------------------------------------
 .segment "SPRITES"
 
-; Snake Head Sprite - with eyes and forked tongue (Block 128 = $2000)
+; Snake Head Sprite - small 8x8 centered (Block 128 = $2000)
 sprite_head:
-    .byte $0F, $F0, $00   ; Row 0  - top curve
-    .byte $3F, $FC, $00   ; Row 1
-    .byte $7F, $FE, $00   ; Row 2
-    .byte $7F, $FE, $00   ; Row 3
-    .byte $FF, $FF, $00   ; Row 4
-    .byte $E7, $E7, $00   ; Row 5  - eyes (holes)
-    .byte $E7, $E7, $00   ; Row 6  - eyes (holes)
-    .byte $FF, $FF, $00   ; Row 7
-    .byte $FF, $FF, $00   ; Row 8
-    .byte $FF, $FF, $00   ; Row 9
-    .byte $7F, $FE, $00   ; Row 10
-    .byte $7F, $FE, $00   ; Row 11
-    .byte $3F, $FC, $00   ; Row 12
-    .byte $1F, $F8, $00   ; Row 13
-    .byte $0F, $F0, $00   ; Row 14
-    .byte $07, $E0, $00   ; Row 15
-    .byte $03, $C0, $00   ; Row 16
-    .byte $01, $80, $00   ; Row 17 - tongue
-    .byte $03, $C0, $00   ; Row 18 - tongue fork
-    .byte $02, $40, $00   ; Row 19 - tongue fork
-    .byte $00, $00, $00   ; Row 20
-    .byte $00            ; Padding to 64 bytes
-
-; Apple Sprite - round apple with stem (Block 129 = $2040)
-sprite_apple:
-    .byte $01, $80, $00   ; Row 0  - stem
-    .byte $03, $C0, $00   ; Row 1  - stem
-    .byte $07, $FC, $00   ; Row 2  - leaf
-    .byte $03, $F8, $00   ; Row 3  - leaf
-    .byte $0F, $F0, $00   ; Row 4  - top of apple
-    .byte $1F, $F8, $00   ; Row 5
-    .byte $3F, $FC, $00   ; Row 6
-    .byte $7F, $FE, $00   ; Row 7
-    .byte $7F, $FE, $00   ; Row 8
-    .byte $7F, $FE, $00   ; Row 9  - widest
-    .byte $7F, $FE, $00   ; Row 10
-    .byte $7F, $FE, $00   ; Row 11
-    .byte $3F, $FC, $00   ; Row 12
-    .byte $3F, $FC, $00   ; Row 13
-    .byte $1F, $F8, $00   ; Row 14
-    .byte $0F, $F0, $00   ; Row 15
-    .byte $07, $E0, $00   ; Row 16
-    .byte $03, $C0, $00   ; Row 17
-    .byte $01, $80, $00   ; Row 18
+    .byte $00, $00, $00   ; Row 0
+    .byte $00, $00, $00   ; Row 1
+    .byte $00, $00, $00   ; Row 2
+    .byte $00, $00, $00   ; Row 3
+    .byte $00, $00, $00   ; Row 4
+    .byte $00, $00, $00   ; Row 5
+    .byte $00, $3C, $00   ; Row 6  - top
+    .byte $00, $7E, $00   ; Row 7
+    .byte $00, $DB, $00   ; Row 8  - eyes
+    .byte $00, $FF, $00   ; Row 9
+    .byte $00, $FF, $00   ; Row 10
+    .byte $00, $7E, $00   ; Row 11
+    .byte $00, $3C, $00   ; Row 12
+    .byte $00, $18, $00   ; Row 13 - tongue
+    .byte $00, $00, $00   ; Row 14
+    .byte $00, $00, $00   ; Row 15
+    .byte $00, $00, $00   ; Row 16
+    .byte $00, $00, $00   ; Row 17
+    .byte $00, $00, $00   ; Row 18
     .byte $00, $00, $00   ; Row 19
     .byte $00, $00, $00   ; Row 20
     .byte $00            ; Padding to 64 bytes
 
-; Body Segment Sprite - filled circle (Block 130 = $2080)
+; Apple Sprite - small 8x8 centered (Block 129 = $2040)
+sprite_apple:
+    .byte $00, $00, $00   ; Row 0
+    .byte $00, $00, $00   ; Row 1
+    .byte $00, $00, $00   ; Row 2
+    .byte $00, $00, $00   ; Row 3
+    .byte $00, $00, $00   ; Row 4
+    .byte $00, $08, $00   ; Row 5  - stem
+    .byte $00, $1C, $00   ; Row 6  - leaf
+    .byte $00, $3C, $00   ; Row 7  - top
+    .byte $00, $7E, $00   ; Row 8
+    .byte $00, $7E, $00   ; Row 9
+    .byte $00, $7E, $00   ; Row 10
+    .byte $00, $3C, $00   ; Row 11
+    .byte $00, $18, $00   ; Row 12
+    .byte $00, $00, $00   ; Row 13
+    .byte $00, $00, $00   ; Row 14
+    .byte $00, $00, $00   ; Row 15
+    .byte $00, $00, $00   ; Row 16
+    .byte $00, $00, $00   ; Row 17
+    .byte $00, $00, $00   ; Row 18
+    .byte $00, $00, $00   ; Row 19
+    .byte $00, $00, $00   ; Row 20
+    .byte $00            ; Padding to 64 bytes
+
+; Body Segment Sprite - small 6x6 centered (Block 130 = $2080)
 sprite_body:
     .byte $00, $00, $00   ; Row 0
     .byte $00, $00, $00   ; Row 1
-    .byte $03, $C0, $00   ; Row 2
-    .byte $0F, $F0, $00   ; Row 3
-    .byte $1F, $F8, $00   ; Row 4
-    .byte $3F, $FC, $00   ; Row 5
-    .byte $3F, $FC, $00   ; Row 6
-    .byte $7F, $FE, $00   ; Row 7
-    .byte $7F, $FE, $00   ; Row 8
-    .byte $7F, $FE, $00   ; Row 9  - center
-    .byte $7F, $FE, $00   ; Row 10
-    .byte $7F, $FE, $00   ; Row 11
-    .byte $3F, $FC, $00   ; Row 12
-    .byte $3F, $FC, $00   ; Row 13
-    .byte $1F, $F8, $00   ; Row 14
-    .byte $0F, $F0, $00   ; Row 15
-    .byte $03, $C0, $00   ; Row 16
+    .byte $00, $00, $00   ; Row 2
+    .byte $00, $00, $00   ; Row 3
+    .byte $00, $00, $00   ; Row 4
+    .byte $00, $00, $00   ; Row 5
+    .byte $00, $00, $00   ; Row 6
+    .byte $00, $18, $00   ; Row 7  - top
+    .byte $00, $3C, $00   ; Row 8
+    .byte $00, $3C, $00   ; Row 9  - center
+    .byte $00, $3C, $00   ; Row 10
+    .byte $00, $18, $00   ; Row 11
+    .byte $00, $00, $00   ; Row 12
+    .byte $00, $00, $00   ; Row 13
+    .byte $00, $00, $00   ; Row 14
+    .byte $00, $00, $00   ; Row 15
+    .byte $00, $00, $00   ; Row 16
     .byte $00, $00, $00   ; Row 17
     .byte $00, $00, $00   ; Row 18
     .byte $00, $00, $00   ; Row 19

@@ -6,7 +6,7 @@ Optimized by: Claude Sonnet 4.5
 
 ---
 
-## Changes Made
+## Changes Made 
 
 ### 1. **Bush Collision Detection** (Lines 975-1044)
 **Problem**: Snake could pass through bushes (character 102)

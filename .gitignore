@@ -2,7 +2,11 @@
 *.o
 *.map
 *.lbl
+*.lst
+*.bmp
+*.png
 __pycache__/
 vice.log
 vice.log.*
-
+screenshot*.png
+c64_screen*.png

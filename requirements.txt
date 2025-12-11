@@ -1,0 +1,8 @@
+# C64AIToolChain Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# Image processing for screenshot conversion
+Pillow>=9.0.0
+
+# Ollama client for VLM integration (vlm_look.py)
+ollama>=0.1.0
