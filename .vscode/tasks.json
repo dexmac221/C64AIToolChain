@@ -6,7 +6,7 @@
 			"type": "shell",
 			"command": "bash",
 			"args": [
-				"./build.sh"
+				"${workspaceFolder}/build.sh"
 			],
 			"isBackground": false,
 			"group": "build"
@@ -14,9 +14,9 @@
 		{
 			"label": "Run in VICE",
 			"type": "shell",
-			"command": "x64",
+			"command": "bash",
 			"args": [
-				"-remotemonitor",
+				"${workspaceFolder}/run_vice.sh",
 				"snake.prg"
 			],
 			"isBackground": true,

@@ -69,10 +69,20 @@ SPRITE_BASE  = $2000
 SPRITE_BLOCK = 128          ; $2000 / 64
 
 ; Screen boundaries (sprite coordinates)
-MAZE_LEFT    = 24           ; Left edge of maze
-MAZE_RIGHT   = 255          ; Right edge
-MAZE_TOP     = 50           ; Top edge
+; Note: sprites use 9-bit X, but this code stores X in 8-bit vars and keeps
+; SPR_X_MSB cleared. To avoid wrapping at x>=256, keep the maze within columns
+; 0..28 (x<=248) and start it at column 9.
+MAZE_LEFT    = 96           ; Left edge of maze (col 9 => 24 + 9*8)
+MAZE_RIGHT   = 248          ; Right edge (col 28 => 24 + 28*8)
+; Maze is drawn starting at screen row 2 (see init_maze), so the topmost
+; walkable pixel row is 50 + 2*8 = 66.
+MAZE_TOP     = 66           ; Top edge
 MAZE_BOTTOM  = 234          ; Bottom edge
+
+MAZE_COL     = 9            ; Maze starts at screen column 9
+MAZE_ROW     = 2            ; Maze starts at screen row 2
+MAZE_W       = 20           ; Maze width in chars
+MAZE_H       = 22           ; Maze height in chars
 
 ; Movement
 MOVE_SPEED   = 2            ; Pixels per frame
@@ -197,8 +207,8 @@ game_restart:
     sta score_lo
     sta score_hi
     
-    ; Enable demo mode
-    lda #1
+    ; Default to player control (demo mode off)
+    lda #0
     sta demo_mode
     lda #30
     sta demo_timer
@@ -337,6 +347,30 @@ copy_sprites2:
     inx
     cpx #63
     bne copy_sprites2
+
+    ldx #0
+copy_sprites_pac_left:
+    lda sprite_pacman_left, x
+    sta $2100, x            ; Pac-Man open left (block 132)
+    inx
+    cpx #63
+    bne copy_sprites_pac_left
+
+    ldx #0
+copy_sprites_pac_up:
+    lda sprite_pacman_up, x
+    sta $2140, x            ; Pac-Man open up (block 133)
+    inx
+    cpx #63
+    bne copy_sprites_pac_up
+
+    ldx #0
+copy_sprites_pac_down:
+    lda sprite_pacman_down, x
+    sta $2180, x            ; Pac-Man open down (block 134)
+    inx
+    cpx #63
+    bne copy_sprites_pac_down
     
     ldx #0
 copy_sprites3:
@@ -419,7 +453,8 @@ clear_screen:
 
 init_maze:
     ; Draw the maze centered on screen
-    ; Maze is 20 chars wide, screen is 40, so start at column 10
+    ; Maze is 20 chars wide, screen is 40.
+    ; Start at column 9 (instead of 10) so sprite X never reaches 256.
     
     lda #0
     sta dots_left
@@ -430,16 +465,16 @@ init_maze:
     lda #>maze_data
     sta ptr_hi
     
-    ; Set up destination - screen row 2, column 10 (offset = 80 + 10 = 90)
-    lda #<(SCREEN_RAM + 90)
+    ; Set up destination - screen row 2, column 9 (offset = 80 + 9 = 89)
+    lda #<(SCREEN_RAM + 89)
     sta tmp1
-    lda #>(SCREEN_RAM + 90)
+    lda #>(SCREEN_RAM + 89)
     sta tmp2
     
     ; Set up color pointer
-    lda #<(COLOR_RAM + 90)
+    lda #<(COLOR_RAM + 89)
     sta tmp3
-    lda #>(COLOR_RAM + 90)
+    lda #>(COLOR_RAM + 89)
     sta tmp4
     
     ldx #0              ; Row counter (max ~24 rows)
@@ -544,29 +579,29 @@ maze_done:
 
 init_positions:
     ; Pac-Man starting position (center of maze area)
-    ; Maze starts at screen column 10 + sprite offset 24
+    ; Maze starts at screen column 9 + sprite offset 24
     ; Y position needs to be in a corridor, not a wall
-    lda #160            ; X position (middle of maze)
+    lda #152            ; X position (middle of maze)
     sta pac_x
-    lda #220            ; Y position (bottom corridor - row 20)
+    lda #226            ; Y position aligned to grid (screen row 22 => maze row 20, open corridor)
     sta pac_y
     lda #0              ; Facing right
     sta pac_dir
     sta pac_next_dir
     sta pac_frame
     
-    ; Ghost starting positions (in ghost house area - center of maze)
+    ; Ghost starting positions (place on a walkable corridor)
     ; Spread them out more
-    lda #140
+    lda #144
     sta ghost_x
-    lda #150
+    lda #152
     sta ghost_x + 1
     lda #160
     sta ghost_x + 2
-    lda #170
+    lda #168
     sta ghost_x + 3
     
-    lda #140            ; Y position around middle
+    lda #194            ; Y position aligned to grid (screen row 18 => maze row 16)
     sta ghost_y
     sta ghost_y + 1
     sta ghost_y + 2
@@ -882,6 +917,19 @@ check_wall:
     lsr
     lsr
     sta tmp4            ; Screen Y
+
+    ; Keep movement checks inside the maze rectangle (which starts at row 2, col 9)
+    lda tmp3
+    cmp #MAZE_COL
+    bcc is_blocked
+    cmp #MAZE_COL + MAZE_W
+    bcs is_blocked
+
+    lda tmp4
+    cmp #MAZE_ROW
+    bcc is_blocked
+    cmp #MAZE_ROW + MAZE_H
+    bcs is_blocked
     
     ; Calculate screen offset: Y * 40 + X
     lda tmp4
@@ -1093,6 +1141,191 @@ power_done:
 ; GHOST AI
 ; -----------------------------------------------------------------------------
 
+; Check if ghost X can move in direction A
+; Inputs: A = direction (0=R,1=L,2=U,3=D), X = ghost index
+; Returns: Carry set if can move, clear if blocked by wall
+ghost_can_move_dir:
+    sta tmp4            ; Save direction
+    stx tmp3            ; Save ghost index
+
+    ; Current position
+    lda ghost_x, x
+    sta tmp1
+    lda ghost_y, x
+    sta tmp2
+
+    ; Test one tile ahead
+    lda tmp4
+    cmp #0              ; Right
+    bne @not_right
+    lda tmp1
+    clc
+    adc #8
+    sta tmp1
+    jmp @check_wall
+@not_right:
+    cmp #1              ; Left
+    bne @not_left
+    lda tmp1
+    sec
+    sbc #8
+    sta tmp1
+    jmp @check_wall
+@not_left:
+    cmp #2              ; Up
+    bne @not_up
+    lda tmp2
+    sec
+    sbc #8
+    sta tmp2
+    jmp @check_wall
+@not_up:
+    ; Down
+    lda tmp2
+    clc
+    adc #8
+    sta tmp2
+
+@check_wall:
+    ; Convert pixel position to screen coordinates (use center of 8x8: +4,+4)
+    lda tmp1
+    sec
+    sbc #24
+    clc
+    adc #4
+    lsr
+    lsr
+    lsr
+    sta tmp1            ; Screen X
+
+    lda tmp2
+    sec
+    sbc #50
+    clc
+    adc #4
+    lsr
+    lsr
+    lsr
+    sta tmp2            ; Screen Y
+
+    ; Keep ghosts inside the rendered maze area
+    lda tmp1
+    cmp #MAZE_COL
+    bcc @blocked
+    cmp #MAZE_COL + MAZE_W
+    bcs @blocked
+
+    lda tmp2
+    cmp #MAZE_ROW
+    bcc @blocked
+    cmp #MAZE_ROW + MAZE_H
+    bcs @blocked
+
+    ; ptr = SCREEN_RAM + (Y*40 + X)
+    lda tmp2
+    asl
+    asl
+    asl
+    sta ptr_lo
+    lda tmp2
+    asl
+    asl
+    asl
+    asl
+    asl
+    clc
+    adc ptr_lo
+    adc tmp1
+    sta ptr_lo
+    lda #0
+    adc #0
+    sta ptr_hi
+
+    lda ptr_lo
+    clc
+    adc #<SCREEN_RAM
+    sta ptr_lo
+    lda ptr_hi
+    adc #>SCREEN_RAM
+    sta ptr_hi
+
+    ldy #0
+    lda (ptr_lo), y
+    cmp #CHAR_WALL
+    beq @blocked
+
+    ldx tmp3            ; Restore ghost index
+    sec
+    rts
+
+@blocked:
+    ldx tmp3            ; Restore ghost index
+    clc
+    rts
+
+; Choose any available direction for ghost X
+; Prefers non-reverse directions; falls back to reverse if needed.
+ghost_pick_any_dir:
+    lda ghost_dir, x
+    sta tmp4
+
+    ; Try 0,1,2,3 excluding reverse
+    lda tmp4
+    eor #$01
+    sta tmp2            ; tmp2 = reverse dir
+
+    lda #0
+    cmp tmp2
+    beq @try1
+    jsr ghost_can_move_dir
+    bcs @set0
+@try1:
+    lda #1
+    cmp tmp2
+    beq @try2
+    jsr ghost_can_move_dir
+    bcs @set1
+@try2:
+    lda #2
+    cmp tmp2
+    beq @try3
+    jsr ghost_can_move_dir
+    bcs @set2
+@try3:
+    lda #3
+    cmp tmp2
+    beq @try_rev
+    jsr ghost_can_move_dir
+    bcs @set3
+
+@try_rev:
+    lda tmp2
+    jsr ghost_can_move_dir
+    bcc @done
+    lda tmp2
+    sta ghost_dir, x
+    rts
+
+@set0:
+    lda #0
+    sta ghost_dir, x
+    rts
+@set1:
+    lda #1
+    sta ghost_dir, x
+    rts
+@set2:
+    lda #2
+    sta ghost_dir, x
+    rts
+@set3:
+    lda #3
+    sta ghost_dir, x
+    rts
+
+@done:
+    rts
+
 update_ghosts:
     ldx #0
 ghost_loop:
@@ -1125,27 +1358,41 @@ update_one_ghost:
     sta ghost_timer, x
     
 ghost_continue:
-    ; Move in current direction
+    ; If blocked by a wall, pick a new direction
     lda ghost_dir, x
-    
+    jsr ghost_can_move_dir
+    bcs @move_dir
+
+    jsr ghost_choose_direction
+
+    ; If AI still picked a blocked direction, pick any available
+    lda ghost_dir, x
+    jsr ghost_can_move_dir
+    bcs @move_dir
+    jsr ghost_pick_any_dir
+
+@move_dir:
+    ; Move in current direction (2px step)
+    lda ghost_dir, x
+
+    ; Final safety: if still blocked, don't move this frame
+    jsr ghost_can_move_dir
+    bcc ghost_move_done
+
     cmp #0              ; Right
     bne ghost_not_right
     lda ghost_x, x
     clc
     adc #2
-    cmp #240
-    bcs ghost_reverse
     sta ghost_x, x
     jmp ghost_move_done
 ghost_not_right:
-    
+
     cmp #1              ; Left
     bne ghost_not_left
     lda ghost_x, x
     sec
     sbc #2
-    cmp #30
-    bcc ghost_reverse
     sta ghost_x, x
     jmp ghost_move_done
 ghost_not_left:
@@ -1155,8 +1402,6 @@ ghost_not_left:
     lda ghost_y, x
     sec
     sbc #2
-    cmp #60
-    bcc ghost_reverse
     sta ghost_y, x
     jmp ghost_move_done
 ghost_not_up:
@@ -1165,76 +1410,82 @@ ghost_not_up:
     lda ghost_y, x
     clc
     adc #2
-    cmp #220
-    bcs ghost_reverse
     sta ghost_y, x
-    jmp ghost_move_done
-
-ghost_reverse:
-    ; Hit boundary, reverse direction
-    lda ghost_dir, x
-    eor #$01            ; Flip direction
-    sta ghost_dir, x
     
 ghost_move_done:
     rts
 
 ghost_choose_direction:
     ; Simple AI: chase Pac-Man in normal mode, run away in fright mode
+    ; ALWAYS falls through to ghost_pick_any_dir if no preferred dir works.
     
     lda ghost_mode, x
     cmp #MODE_FRIGHT
     beq ghost_flee
-    
-    ; Chase mode - move toward Pac-Man
-    ; Compare X positions
+
+    ; ---- Chase mode: try to approach Pac-Man ----
+
+    ; Horizontal preference
     lda ghost_x, x
     cmp pac_x
-    bcc ghost_go_right
-    bne ghost_go_left
-    jmp ghost_check_y
-    
-ghost_go_right:
-    ; Check if we can go right (not reversing)
+    bcc @try_right
+    bne @try_left
+    jmp @try_vertical
+
+@try_right:
     lda ghost_dir, x
-    cmp #1              ; Currently going left?
-    beq ghost_check_y   ; Yes, try Y instead
+    cmp #1              ; going left? avoid 180° turn
+    beq @try_vertical
+    lda #0
+    jsr ghost_can_move_dir
+    bcc @try_vertical
     lda #0
     sta ghost_dir, x
     rts
-    
-ghost_go_left:
+
+@try_left:
     lda ghost_dir, x
-    cmp #0              ; Currently going right?
-    beq ghost_check_y
+    cmp #0
+    beq @try_vertical
+    lda #1
+    jsr ghost_can_move_dir
+    bcc @try_vertical
     lda #1
     sta ghost_dir, x
     rts
-    
-ghost_check_y:
+
+@try_vertical:
     lda ghost_y, x
     cmp pac_y
-    bcc ghost_go_down
-    bne ghost_go_up
-    rts
-    
-ghost_go_down:
+    bcc @try_down
+    bne @try_up
+    jmp @fallback       ; same row, no preference -> pick any
+
+@try_down:
     lda ghost_dir, x
-    cmp #2              ; Going up?
-    beq ghost_ai_done
+    cmp #2              ; going up?
+    beq @fallback
+    lda #3
+    jsr ghost_can_move_dir
+    bcc @fallback
     lda #3
     sta ghost_dir, x
     rts
-    
-ghost_go_up:
+
+@try_up:
     lda ghost_dir, x
-    cmp #3              ; Going down?
-    beq ghost_ai_done
+    cmp #3              ; going down?
+    beq @fallback
+    lda #2
+    jsr ghost_can_move_dir
+    bcc @fallback
     lda #2
     sta ghost_dir, x
-    
-ghost_ai_done:
     rts
+
+@fallback:
+    ; No preferred direction worked – pick ANY available
+    jmp ghost_pick_any_dir
 
 ghost_flee:
     ; Frightened mode - move away from Pac-Man (opposite of chase)
@@ -1249,6 +1500,9 @@ ghost_flee_right:
     cmp #1
     beq ghost_flee_y
     lda #0
+    jsr ghost_can_move_dir
+    bcc ghost_flee_y
+    lda #0
     sta ghost_dir, x
     rts
     
@@ -1256,6 +1510,9 @@ ghost_flee_left:
     lda ghost_dir, x
     cmp #0
     beq ghost_flee_y
+    lda #1
+    jsr ghost_can_move_dir
+    bcc ghost_flee_y
     lda #1
     sta ghost_dir, x
     rts
@@ -1432,49 +1689,29 @@ wait_restart:
 update_sprites:
     ; Pac-Man position
     lda pac_x
-    clc
-    adc #24
     sta SPR0_X
     lda pac_y
-    clc
-    adc #50
     sta SPR0_Y
     
     ; Ghost positions
     lda ghost_x
-    clc
-    adc #24
     sta SPR1_X
     lda ghost_y
-    clc
-    adc #50
     sta SPR1_Y
     
     lda ghost_x + 1
-    clc
-    adc #24
     sta SPR2_X
     lda ghost_y + 1
-    clc
-    adc #50
     sta SPR2_Y
     
     lda ghost_x + 2
-    clc
-    adc #24
     sta SPR3_X
     lda ghost_y + 2
-    clc
-    adc #50
     sta SPR3_Y
     
     lda ghost_x + 3
-    clc
-    adc #24
     sta SPR4_X
     lda ghost_y + 3
-    clc
-    adc #50
     sta SPR4_Y
     
     ; X MSB (all sprites < 256 for now)
@@ -1497,7 +1734,24 @@ animate_pacman:
     lda #SPRITE_BLOCK + 1   ; Closed
     jmp set_pac_sprite
 mouth_open:
-    lda #SPRITE_BLOCK       ; Open
+    lda pac_dir
+    beq pac_open_right
+    cmp #1
+    beq pac_open_left
+    cmp #2
+    beq pac_open_up
+    ; else down
+pac_open_down:
+    lda #SPRITE_BLOCK + 6   ; Open down (block 134)
+    jmp set_pac_sprite
+pac_open_up:
+    lda #SPRITE_BLOCK + 5   ; Open up (block 133)
+    jmp set_pac_sprite
+pac_open_left:
+    lda #SPRITE_BLOCK + 4   ; Open left (block 132)
+    jmp set_pac_sprite
+pac_open_right:
+    lda #SPRITE_BLOCK       ; Open right (block 128)
 set_pac_sprite:
     sta SPR_PTRS
     
@@ -1753,47 +2007,122 @@ maze_data:
 
 ; Pac-Man open mouth (facing right) - 24x21 pixels
 sprite_pacman:
-    .byte %00000111, %11100000, %00000000   ; Row 0
-    .byte %00011111, %11111000, %00000000   ; Row 1
-    .byte %00111111, %11111100, %00000000   ; Row 2
-    .byte %01111111, %11111110, %00000000   ; Row 3
-    .byte %01111111, %11111000, %00000000   ; Row 4
-    .byte %11111111, %11100000, %00000000   ; Row 5
-    .byte %11111111, %11000000, %00000000   ; Row 6
-    .byte %11111111, %10000000, %00000000   ; Row 7
-    .byte %11111111, %10000000, %00000000   ; Row 8
-    .byte %11111111, %11000000, %00000000   ; Row 9
-    .byte %11111111, %11100000, %00000000   ; Row 10
-    .byte %01111111, %11111000, %00000000   ; Row 11
-    .byte %01111111, %11111110, %00000000   ; Row 12
-    .byte %00111111, %11111100, %00000000   ; Row 13
-    .byte %00011111, %11111000, %00000000   ; Row 14
-    .byte %00000111, %11100000, %00000000   ; Row 15
-    .byte %00000000, %00000000, %00000000   ; Row 16
-    .byte %00000000, %00000000, %00000000   ; Row 17
-    .byte %00000000, %00000000, %00000000   ; Row 18
-    .byte %00000000, %00000000, %00000000   ; Row 19
-    .byte %00000000, %00000000, %00000000   ; Row 20
+    .byte %00111100, %00000000, %00000000   ; 8x8 in top-left
+    .byte %01111110, %00000000, %00000000
+    .byte %11111100, %00000000, %00000000
+    .byte %11111000, %00000000, %00000000
+    .byte %11111000, %00000000, %00000000
+    .byte %11111100, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
     .byte %00                               ; Padding
+
+; Pac-Man open mouth (facing left)
+sprite_pacman_left:
+    .byte %00111100, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %00111111, %00000000, %00000000
+    .byte %00011111, %00000000, %00000000
+    .byte %00011111, %00000000, %00000000
+    .byte %00111111, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00
+
+; Pac-Man open mouth (facing up) - simple wedge cut
+sprite_pacman_up:
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00011000, %00000000, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00
+
+; Pac-Man open mouth (facing down) - simple wedge cut
+sprite_pacman_down:
+    .byte %00111100, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %00011000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00
 
 ; Pac-Man closed mouth
 sprite_pacman_closed:
-    .byte %00000111, %11100000, %00000000
-    .byte %00011111, %11111000, %00000000
-    .byte %00111111, %11111100, %00000000
-    .byte %01111111, %11111110, %00000000
-    .byte %01111111, %11111110, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %01111111, %11111110, %00000000
-    .byte %01111111, %11111110, %00000000
-    .byte %00111111, %11111100, %00000000
-    .byte %00011111, %11111000, %00000000
-    .byte %00000111, %11100000, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000
@@ -1803,22 +2132,22 @@ sprite_pacman_closed:
 
 ; Ghost normal
 sprite_ghost:
-    .byte %00000111, %11100000, %00000000
-    .byte %00011111, %11111000, %00000000
-    .byte %00111111, %11111100, %00000000
-    .byte %01111111, %11111110, %00000000
-    .byte %01111001, %10011110, %00000000   ; Eyes
-    .byte %11111001, %10011111, %00000000
-    .byte %11111001, %10011111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11101110, %11101110, %00000000   ; Wavy bottom
-    .byte %11000110, %01100011, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %11011011, %00000000, %00000000   ; Eyes
+    .byte %11111111, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %10101010, %00000000, %00000000   ; Wavy bottom
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000
@@ -1828,22 +2157,22 @@ sprite_ghost:
 
 ; Ghost frightened (scared)
 sprite_ghost_fright:
-    .byte %00000111, %11100000, %00000000
-    .byte %00011111, %11111000, %00000000
-    .byte %00111111, %11111100, %00000000
-    .byte %01111111, %11111110, %00000000
-    .byte %01100110, %01100110, %00000000   ; Scared eyes
-    .byte %11100110, %01100111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11011001, %10011011, %00000000   ; Wavy mouth
-    .byte %10100110, %01100101, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11111111, %11111111, %00000000
-    .byte %11101110, %11101110, %00000000
-    .byte %11000110, %01100011, %00000000
+    .byte %00111100, %00000000, %00000000
+    .byte %01111110, %00000000, %00000000
+    .byte %11111111, %00000000, %00000000
+    .byte %01100110, %00000000, %00000000   ; Scared eyes
+    .byte %11111111, %00000000, %00000000
+    .byte %10100101, %00000000, %00000000   ; Mouth
+    .byte %11111111, %00000000, %00000000
+    .byte %10101010, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
+    .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000
     .byte %00000000, %00000000, %00000000

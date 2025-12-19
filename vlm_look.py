@@ -53,7 +53,8 @@ except ImportError:
 
 
 # Configuration
-OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://192.168.1.62:11434')
+# Prefer localhost by default; override via OLLAMA_HOST when using a remote server.
+OLLAMA_HOST = os.environ.get('OLLAMA_HOST', 'http://localhost:11434')
 DEFAULT_MODEL = os.environ.get('OLLAMA_MODEL', 'qwen3-vl')
 VICE_PORT = 6510
 

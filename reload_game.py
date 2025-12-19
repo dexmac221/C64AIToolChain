@@ -10,6 +10,7 @@ Usage:
     python3 reload_game.py snake2       # Reload snake2/snake2.prg
     python3 reload_game.py tetris_v1    # Reload tetris_v1/tetris_v1.prg
     python3 reload_game.py path/to/game.prg  # Reload specific file
+    python3 reload_game.py --start 080d snake  # Override start address (hex)
 
 Requirements:
     - VICE running with -remotemonitor flag (port 6510)
@@ -21,6 +22,11 @@ import socket
 import time
 import sys
 import os
+
+
+# Default machine-code entrypoint address after the embedded BASIC SYS stub.
+# Most programs in this repo end up starting at $0810.
+DEFAULT_START_ADDR = 0x0810
 
 
 def connect_vice(host='localhost', port=6510, timeout=3.0):
@@ -120,7 +126,7 @@ def resolve_prg_path(game_arg):
     return None
 
 
-def reload_game(prg_path, host='localhost', port=6510):
+def reload_game(prg_path, host='localhost', port=6510, start_addr=DEFAULT_START_ADDR):
     """
     Reload a .prg file into running VICE.
     
@@ -150,9 +156,10 @@ def reload_game(prg_path, host='localhost', port=6510):
         # Small delay to ensure load completes
         time.sleep(0.2)
         
-        # Start execution at $080D (SYS 2061, standard cc65 entry point)
-        # This is after the BASIC stub
-        send_command(s, 'g 080d', timeout=0.5)
+        # Start execution at $0810 by default.
+        # Most programs in this repo embed a small BASIC stub that does SYS 2061/2064,
+        # and the machine-code entrypoint ends up at $0810.
+        send_command(s, f'g {start_addr:04x}', timeout=0.5)
         
         print("✓ Reload complete - game running")
         return True
@@ -171,8 +178,21 @@ def main():
     """Main entry point."""
     # Parse arguments
     game = "snake"
-    if len(sys.argv) > 1:
-        game = sys.argv[1]
+    start_addr = DEFAULT_START_ADDR
+    args = sys.argv[1:]
+
+    # Optional: allow overriding start address (hex), e.g. --start 080d
+    if '--start' in args:
+        try:
+            i = args.index('--start')
+            start_addr = int(args[i + 1], 16)
+            del args[i:i + 2]
+        except Exception:
+            print("Error: --start requires a hex address, e.g. --start 0810")
+            return 1
+
+    if len(args) > 0:
+        game = args[0]
     
     # Handle --help
     if game in ('-h', '--help'):
@@ -189,7 +209,7 @@ def main():
         return 1
     
     # Reload
-    success = reload_game(prg_path)
+    success = reload_game(prg_path, start_addr=start_addr)
     return 0 if success else 1
 
 

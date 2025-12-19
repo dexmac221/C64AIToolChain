@@ -30,26 +30,21 @@ This project includes a toolchain to help AI agents (like GitHub Copilot) develo
 ## How it Works
 
 -   **`ai_toolchain.py`**: Connects to localhost:6510 via TCP.
--   Sends `m 0400 07e7` to dump the screen RAM.
--   Parses the hex output and maps C64 screen codes to ASCII characters.
--   Displays the 40x25 screen in the console.
+    -   Sends `m 0400 07e7` to dump the screen RAM.
+    -   Parses the hex output and maps C64 screen codes to ASCII characters.
+    -   Displays the 40x25 screen in the console.
+-   **`vlm_look.py`**: Uses a local Vision Language Model (via Ollama) to analyze screenshots.
+    -   Provides high-level semantic understanding ("The snake is hitting the wall").
+    -   Useful for debugging graphical issues that ASCII cannot capture.
 
 ## Automating Feedback
 
 To fully automate this for an AI agent:
 1.  The agent modifies the code.
 2.  The agent runs `./build.sh`.
-3.  The agent (or a task) restarts VICE (or resets it via monitor command `reset`).
-4.  The agent runs `python3 ai_toolchain.py` to capture the screen state.
-    *   **Important**: The toolchain now sends the `x` command to the monitor after each snapshot to resume execution. This ensures the game continues running while the toolchain is active.
-5.  The agent analyzes the text output to determine if the game is working.
-
-## Snake Fixes
-
-The `snake.s` file has been updated to fix the "hang and repeat" bug:
--   **Buffer Initialization**: The tail buffer is now properly initialized in `init_vars`.
--   **Timing**: The `wait_frame` routine now syncs with the raster line ($D012) and includes a frame counter to run the game logic only every 5th frame (approx 10 updates/sec), making the speed manageable.
--   **Interrupts**: KERNAL interrupts are disabled (`sei`) to prevent screen artifacts.
+3.  The agent runs `python3 reload_game.py` to inject the new code.
+4.  The agent runs `python3 ai_toolchain.py` (for logic) or `python3 vlm_look.py` (for visuals) to verify the state.
+5.  The agent analyzes the output to determine if the game is working.
 
 ## Toolchain Updates
 

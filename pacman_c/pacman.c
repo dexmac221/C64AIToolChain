@@ -95,8 +95,12 @@
 
 // Sprite data location - use $3000 (block 192) which is safe for cc65
 #define SPRITE_DATA 0x3000
-#define SPRITE_BLOCK_PACMAN 192   // $3000 / 64 = 192
-#define SPRITE_BLOCK_GHOST  194   // $3080 / 64 = 194
+#define SPRITE_BLOCK_PACMAN_OPEN_R 192   // $3000 / 64 = 192
+#define SPRITE_BLOCK_PACMAN_OPEN_L 193   // $3040 / 64 = 193
+#define SPRITE_BLOCK_PACMAN_OPEN_U 194   // $3080 / 64 = 194
+#define SPRITE_BLOCK_PACMAN_OPEN_D 195   // $30C0 / 64 = 195
+#define SPRITE_BLOCK_PACMAN_CLOSED 196   // $3100 / 64 = 196
+#define SPRITE_BLOCK_GHOST         197   // $3140 / 64 = 197
 
 // Screen to sprite coordinate conversion
 // Sprite X = screen column * 8 + 24 (hardware offset)
@@ -113,6 +117,7 @@ static unsigned char pacman_x, pacman_y;
 static unsigned char pacman_dir, pacman_next_dir;
 static unsigned char ghost_x[4], ghost_y[4];
 static unsigned char ghost_dir[4];
+static unsigned char pacman_moved;
 static unsigned int score;
 static unsigned char lives;
 static unsigned char dots_left;
@@ -136,40 +141,76 @@ static const char* maze[MAZE_HEIGHT] = {
     "####.###.##.###.####",  // Row 9
     "#........##........#",  // Row 10
     "#.##.###.##.###.##.#",  // Row 11
-    "#o.#...........#.o#",   // Row 12 - power pellets
+    "#o.#.....  .....#.o#",  // Row 12 - power pellets + center tunnel
     "##.#.##.####.##.#.##",  // Row 13
     "#..................#",  // Row 14
     "#.######.##.######.#",  // Row 15
     "####################"   // Row 16 - bottom wall
 };
 
-// Pac-Man sprite data - small 8x8 centered in 24x21 sprite
-// The sprite is positioned in top-left corner for easier alignment
-static const unsigned char pacman_sprite[] = {
-    // Row 0-7: 8x8 Pac-Man in top-left of sprite
-    0x3C, 0x00, 0x00,  // ..XXXX..
-    0x7E, 0x00, 0x00,  // .XXXXXX.
-    0xFC, 0x00, 0x00,  // XXXXXX.. (mouth open right)
-    0xF8, 0x00, 0x00,  // XXXXX...
-    0xF8, 0x00, 0x00,  // XXXXX...
-    0xFC, 0x00, 0x00,  // XXXXXX..
-    0x7E, 0x00, 0x00,  // .XXXXXX.
-    0x3C, 0x00, 0x00,  // ..XXXX..
-    // Rows 8-20: empty
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00
+// Pac-Man bitmaps (8x8) stored in the first byte of each sprite row.
+static const unsigned char pacman_open_r_8x8[8] = {
+    0x3C, // ..XXXX..
+    0x7E, // .XXXXXX.
+    0xFC, // XXXXXX.. (mouth open right)
+    0xF8, // XXXXX...
+    0xF8, // XXXXX...
+    0xFC, // XXXXXX..
+    0x7E, // .XXXXXX.
+    0x3C  // ..XXXX..
 };
+
+// More readable vertical mouth frames for the tiny 8x8 sprite
+static const unsigned char pacman_open_u_8x8[8] = {
+    0x00, // ........
+    0x81, // X......X
+    0xC3, // XX....XX
+    0xE7, // XXX..XXX
+    0xFF, // XXXXXXXX
+    0xFF, // XXXXXXXX
+    0x7E, // .XXXXXX.
+    0x3C  // ..XXXX..
+};
+
+static const unsigned char pacman_open_d_8x8[8] = {
+    0x3C, // ..XXXX..
+    0x7E, // .XXXXXX.
+    0xFF, // XXXXXXXX
+    0xFF, // XXXXXXXX
+    0xE7, // XXX..XXX
+    0xC3, // XX....XX
+    0x81, // X......X
+    0x00  // ........
+};
+
+static const unsigned char pacman_closed_8x8[8] = {
+    0x3C,
+    0x7E,
+    0xFF,
+    0xFF,
+    0xFF,
+    0xFF,
+    0x7E,
+    0x3C
+};
+
+static unsigned char reverse8(unsigned char v) {
+    v = (v & 0xF0) >> 4 | (v & 0x0F) << 4;
+    v = (v & 0xCC) >> 2 | (v & 0x33) << 2;
+    v = (v & 0xAA) >> 1 | (v & 0x55) << 1;
+    return v;
+}
+
+static void write_8x8_sprite(unsigned char* dest, const unsigned char rows[8]) {
+    unsigned char r;
+    unsigned char i;
+    // Clear 63 bytes
+    for (i = 0; i < 63; i++) dest[i] = 0;
+    // Fill rows 0..7 in first byte of each row
+    for (r = 0; r < 8; r++) {
+        dest[r * 3] = rows[r];
+    }
+}
 
 // Ghost sprite data - small 8x8 centered in 24x21 sprite
 static const unsigned char ghost_sprite[] = {
@@ -243,23 +284,37 @@ void sound_off(void) {
 
 // Copy sprite data to sprite memory
 void init_sprites(void) {
-    unsigned char i;
     unsigned char* dest;
+    unsigned char open_l[8];
+    unsigned char i;
     
-    // Copy Pac-Man sprite to block 192 ($3000)
-    dest = (unsigned char*)SPRITE_DATA;
-    for (i = 0; i < 63; i++) {
-        dest[i] = (i < sizeof(pacman_sprite)) ? pacman_sprite[i] : 0;
+    // Derive directional open frames from open-right
+    for (i = 0; i < 8; i++) {
+        open_l[i] = reverse8(pacman_open_r_8x8[i]);
     }
-    
-    // Copy ghost sprite to block 194 ($3080)
-    dest = (unsigned char*)(SPRITE_DATA + 128);
+
+    // Write Pac-Man open frames
+    dest = (unsigned char*)SPRITE_DATA;              // block 192
+    write_8x8_sprite(dest, pacman_open_r_8x8);
+    dest = (unsigned char*)(SPRITE_DATA + 64);       // block 193
+    write_8x8_sprite(dest, open_l);
+    dest = (unsigned char*)(SPRITE_DATA + 128);      // block 194
+    write_8x8_sprite(dest, pacman_open_u_8x8);
+    dest = (unsigned char*)(SPRITE_DATA + 192);      // block 195
+    write_8x8_sprite(dest, pacman_open_d_8x8);
+
+    // Closed frame
+    dest = (unsigned char*)(SPRITE_DATA + 256);      // block 196
+    write_8x8_sprite(dest, pacman_closed_8x8);
+
+    // Ghost sprite data (unchanged)
+    dest = (unsigned char*)(SPRITE_DATA + 320);      // block 197
     for (i = 0; i < 63; i++) {
         dest[i] = (i < sizeof(ghost_sprite)) ? ghost_sprite[i] : 0;
     }
     
     // Set sprite pointers - using block numbers for $3000 area
-    SPRITE_PTRS[0] = SPRITE_BLOCK_PACMAN;  // Pac-Man at $3000
+    SPRITE_PTRS[0] = SPRITE_BLOCK_PACMAN_OPEN_R;  // Pac-Man open (right) at $3000
     SPRITE_PTRS[1] = SPRITE_BLOCK_GHOST;   // Ghost 1 at $3080
     SPRITE_PTRS[2] = SPRITE_BLOCK_GHOST;   // Ghost 2
     SPRITE_PTRS[3] = SPRITE_BLOCK_GHOST;   // Ghost 3
@@ -339,6 +394,7 @@ void init_positions(void) {
     pacman_y = MAZE_SPR_Y(14);  // Row 14
     pacman_dir = DIR_RIGHT;
     pacman_next_dir = DIR_RIGHT;
+    pacman_moved = 0;
     
     // Ghosts start at row 4 (open corridor)
     // Row 4 is "#..................#"
@@ -374,10 +430,27 @@ void update_sprites(void) {
     VIC_SPR_ENA |= 0x01;
 }
 
+static unsigned char is_near_grid(unsigned char coord, unsigned char base, unsigned char tol) {
+    unsigned char m = (coord - base) & 7;
+    return (m <= tol) || (m >= (unsigned char)(8 - tol));
+}
+
+static unsigned char snap_to_grid(unsigned char coord, unsigned char base) {
+    unsigned int rel;
+    if (coord < base) return coord;
+    rel = (unsigned int)(coord - base);
+    rel = (rel + 4) & 0xF8;
+    return (unsigned char)(base + (unsigned char)rel);
+}
+
+static unsigned char opposite_dir(unsigned char dir) {
+    return dir ^ 1;
+}
+
 // Get maze character at sprite position
-char get_maze_at(unsigned char sx, unsigned char sy) {
+static char get_maze_at(int sx, int sy) {
     unsigned char mx, my;
-    unsigned char base_x, base_y;
+    int base_x, base_y;
     
     // Calculate base sprite coordinates for maze origin
     base_x = MAZE_SPR_X(0);  // = 24 + 10*8 = 104
@@ -387,8 +460,8 @@ char get_maze_at(unsigned char sx, unsigned char sy) {
     if (sx < base_x || sy < base_y) return '#';
     
     // Convert sprite coords to maze cell (add 4 to center in cell)
-    mx = (sx - base_x + 4) / 8;
-    my = (sy - base_y + 4) / 8;
+    mx = (unsigned char)((sx - base_x + 4) / 8);
+    my = (unsigned char)((sy - base_y + 4) / 8);
     
     if (mx >= MAZE_WIDTH || my >= MAZE_HEIGHT) {
         return '#';  // Out of bounds = wall
@@ -399,7 +472,7 @@ char get_maze_at(unsigned char sx, unsigned char sy) {
 
 // Check if position is walkable
 unsigned char can_move(unsigned char x, unsigned char y, unsigned char dir) {
-    unsigned char nx = x, ny = y;
+    int nx = x, ny = y;
     char c;
     
     // Look 6 pixels ahead to check next cell
@@ -434,19 +507,80 @@ void demo_ai(void) {
 
 // Move Pac-Man
 void move_pacman(void) {
+    unsigned char base_x = MAZE_SPR_X(0);
+    unsigned char base_y = MAZE_SPR_Y(0);
+    unsigned char snapped;
+
+    // Keep Pac-Man aligned on the perpendicular axis when close to the grid
+    if (pacman_dir == DIR_LEFT || pacman_dir == DIR_RIGHT) {
+        if (is_near_grid(pacman_y, base_y, 2)) {
+            pacman_y = snap_to_grid(pacman_y, base_y);
+        }
+    } else {
+        if (is_near_grid(pacman_x, base_x, 2)) {
+            pacman_x = snap_to_grid(pacman_x, base_x);
+        }
+    }
+
     // Try to change to desired direction
-    if (can_move(pacman_x, pacman_y, pacman_next_dir)) {
-        pacman_dir = pacman_next_dir;
+    if (pacman_next_dir != pacman_dir) {
+        // If turning perpendicular, only allow if we're near the grid line and snap before turning
+        if ((pacman_dir ^ pacman_next_dir) & 2) {
+            if (pacman_next_dir == DIR_UP || pacman_next_dir == DIR_DOWN) {
+                if (is_near_grid(pacman_x, base_x, 2)) {
+                    snapped = snap_to_grid(pacman_x, base_x);
+                    if (can_move(snapped, pacman_y, pacman_next_dir)) {
+                        pacman_x = snapped;
+                        pacman_dir = pacman_next_dir;
+                    }
+                }
+            } else {
+                if (is_near_grid(pacman_y, base_y, 2)) {
+                    snapped = snap_to_grid(pacman_y, base_y);
+                    if (can_move(pacman_x, snapped, pacman_next_dir)) {
+                        pacman_y = snapped;
+                        pacman_dir = pacman_next_dir;
+                    }
+                }
+            }
+        } else if (can_move(pacman_x, pacman_y, pacman_next_dir)) {
+            // Same axis (continue straight / reverse)
+            pacman_dir = pacman_next_dir;
+        }
     }
     
     // Move in current direction if possible
     if (can_move(pacman_x, pacman_y, pacman_dir)) {
+        pacman_moved = 1;
         switch (pacman_dir) {
             case DIR_RIGHT: pacman_x += 2; break;
             case DIR_LEFT:  pacman_x -= 2; break;
             case DIR_UP:    pacman_y -= 2; break;
             case DIR_DOWN:  pacman_y += 2; break;
         }
+    } else {
+        pacman_moved = 0;
+    }
+}
+
+static void animate_pacman(void) {
+    // Toggle open/closed while moving; closed when stopped
+    if (!pacman_moved) {
+        SPRITE_PTRS[0] = SPRITE_BLOCK_PACMAN_CLOSED;
+        return;
+    }
+
+    if (!(frame_count & 4)) {
+        SPRITE_PTRS[0] = SPRITE_BLOCK_PACMAN_CLOSED;
+        return;
+    }
+
+    switch (pacman_dir) {
+        case DIR_LEFT:  SPRITE_PTRS[0] = SPRITE_BLOCK_PACMAN_OPEN_L; break;
+        case DIR_UP:    SPRITE_PTRS[0] = SPRITE_BLOCK_PACMAN_OPEN_U; break;
+        case DIR_DOWN:  SPRITE_PTRS[0] = SPRITE_BLOCK_PACMAN_OPEN_D; break;
+        case DIR_RIGHT:
+        default:        SPRITE_PTRS[0] = SPRITE_BLOCK_PACMAN_OPEN_R; break;
     }
 }
 
@@ -456,26 +590,21 @@ void eat_dot(void) {
     unsigned char base_x, base_y;
     unsigned int screen_pos;
     unsigned char* screen = (unsigned char*)0x0400;
-    char c;
-    unsigned char on_grid;
+    unsigned int rel;
     
     // Get maze cell under Pac-Man
     base_x = MAZE_SPR_X(0);
     base_y = MAZE_SPR_Y(0);
     
     if (pacman_x < base_x || pacman_y < base_y) return;
-    
-    // Only eat when centered on a cell (within 2 pixels of center)
-    on_grid = (((pacman_x - base_x) & 7) < 3) && 
-              (((pacman_y - base_y) & 7) < 3);
-    if (!on_grid) return;
-    
-    mx = (pacman_x - base_x) / 8;
-    my = (pacman_y - base_y) / 8;
+
+    // Use the sprite center (like the ASM version) so eating works even if slightly off-grid
+    rel = (unsigned int)(pacman_x - base_x) + 4;
+    mx = (unsigned char)(rel >> 3);
+    rel = (unsigned int)(pacman_y - base_y) + 4;
+    my = (unsigned char)(rel >> 3);
     
     if (mx >= MAZE_WIDTH || my >= MAZE_HEIGHT) return;
-    
-    c = maze[my][mx];
     
     // Check if this cell has a dot on screen (not already eaten)
     screen_pos = (my + MAZE_OFFSET_Y) * 40 + (mx + MAZE_OFFSET_X);
@@ -544,13 +673,27 @@ void handle_death(void) {
 void move_ghosts(void) {
     unsigned char i;
     unsigned char new_dir;
+    unsigned char start;
+    unsigned char k;
     unsigned char base_x, base_y;
     unsigned char on_grid;
+    unsigned char snapped;
     
     base_x = MAZE_SPR_X(0);
     base_y = MAZE_SPR_Y(0);
     
     for (i = 0; i < 4; i++) {
+        // Keep ghosts aligned on the perpendicular axis when close to the grid
+        if (ghost_dir[i] == DIR_LEFT || ghost_dir[i] == DIR_RIGHT) {
+            if (is_near_grid(ghost_y[i], base_y, 2)) {
+                ghost_y[i] = snap_to_grid(ghost_y[i], base_y);
+            }
+        } else {
+            if (is_near_grid(ghost_x[i], base_x, 2)) {
+                ghost_x[i] = snap_to_grid(ghost_x[i], base_x);
+            }
+        }
+
         // Check if ghost is on grid (aligned to 8-pixel boundary)
         on_grid = (((ghost_x[i] - base_x) & 7) == 0) && 
                   (((ghost_y[i] - base_y) & 7) == 0);
@@ -559,19 +702,48 @@ void move_ghosts(void) {
         if (on_grid) {
             // Check if current direction is blocked
             if (!can_move(ghost_x[i], ghost_y[i], ghost_dir[i])) {
-                // Try each direction systematically
-                for (new_dir = 0; new_dir < 4; new_dir++) {
+                // Try directions in a pseudo-random order, avoiding immediate reverse if possible
+                start = rand() & 3;
+                for (k = 0; k < 4; k++) {
+                    new_dir = (start + k) & 3;
+                    if (new_dir == opposite_dir(ghost_dir[i])) continue;
                     if (can_move(ghost_x[i], ghost_y[i], new_dir)) {
                         ghost_dir[i] = new_dir;
                         break;
+                    }
+                }
+                // If only reverse works, allow it
+                if (!can_move(ghost_x[i], ghost_y[i], ghost_dir[i])) {
+                    new_dir = opposite_dir(ghost_dir[i]);
+                    if (can_move(ghost_x[i], ghost_y[i], new_dir)) {
+                        ghost_dir[i] = new_dir;
                     }
                 }
             }
             // Occasionally change direction at intersections
             else if ((rand() & 31) == 0) {
                 new_dir = rand() & 3;
+                if (new_dir != opposite_dir(ghost_dir[i]) && can_move(ghost_x[i], ghost_y[i], new_dir)) {
+                    ghost_dir[i] = new_dir;
+                }
+            }
+        }
+        // Recovery: if blocked while off-grid, snap and pick a new direction anyway
+        if (!can_move(ghost_x[i], ghost_y[i], ghost_dir[i])) {
+            if (is_near_grid(ghost_x[i], base_x, 2)) {
+                snapped = snap_to_grid(ghost_x[i], base_x);
+                ghost_x[i] = snapped;
+            }
+            if (is_near_grid(ghost_y[i], base_y, 2)) {
+                snapped = snap_to_grid(ghost_y[i], base_y);
+                ghost_y[i] = snapped;
+            }
+            start = rand() & 3;
+            for (k = 0; k < 4; k++) {
+                new_dir = (start + k) & 3;
                 if (can_move(ghost_x[i], ghost_y[i], new_dir)) {
                     ghost_dir[i] = new_dir;
+                    break;
                 }
             }
         }
@@ -702,6 +874,7 @@ void game_loop(void) {
                 move_pacman();
                 eat_dot();
             }
+            animate_pacman();
             
             move_ghosts();
             check_ghost_collision();

@@ -31,12 +31,30 @@ Developing in 6510 Assembly is challenging due to the lack of modern debugging t
 
 ## Included Example: Snake
 
-![Snake Game Demo](snake.gif)
+![Snake Game Demo](snake/snake.gif)
 
 The repository includes a complete **Snake** game developed using this toolchain. It serves as a proof-of-concept for:
 - **Zero Page Optimization**: Efficient use of the 6510's fastest memory.
 - **Hardware RNG**: Using the CIA timers for random number generation.
 - **AI Demo Mode**: An autonomous mode where the game plays itself, verified by the toolchain.
+
+## Case Study: Pac-Man (C vs Assembly)
+
+![Pac-Man C Demo](pacman_c/pacman.gif)
+
+This project includes two versions of Pac-Man to demonstrate a critical finding in AI-assisted development:
+
+### 1. The C Version (`pacman_c/`) - **Highly Recommended**
+Written in C using the `cc65` compiler.
+- **Status**: Fully functional, robust, and easy to modify.
+- **Why it works**: The C compiler acts as a deterministic "guard rail." It handles memory allocation, stack management, and variable scope automatically. This reduces the cognitive load on the AI, preventing "hallucinations" where the AI invents non-existent opcodes or mismanages memory addresses.
+- **Result**: A stable, playable game with complex logic (ghost AI, collision detection) implemented quickly.
+
+### 2. The Assembly Version (`pacman_asm/`) - **Experimental**
+Written in raw 6502 Assembly.
+- **Status**: Functional but prone to subtle bugs (e.g., ghost movement logic errors, variable clobbering).
+- **The Challenge**: Writing raw Assembly is like predicting a chaotic time series. The AI must mentally track the state of every register (A, X, Y), flags, and memory address at every cycle.
+- **Conclusion**: While powerful, pure Assembly increases the risk of "logic drift" or hallucination. Using a high-level language like C with a deterministic compiler (`cc65`) provides a much more reliable foundation for AI code generation, allowing the AI to focus on *logic* rather than *plumbing*.
 
 ## Getting Started
 

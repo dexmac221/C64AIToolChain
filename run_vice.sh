@@ -28,9 +28,9 @@ echo "Loading: $PRG_FILE"
 
 # Try different VICE executables in order of preference
 if command -v x64sc &> /dev/null; then
-    exec x64sc -remotemonitor "$PRG_FILE"
+    exec x64sc -remotemonitor -autostart "$PRG_FILE"
 elif command -v x64 &> /dev/null; then
-    exec x64 -remotemonitor "$PRG_FILE"
+    exec x64 -remotemonitor -autostart "$PRG_FILE"
 else
     echo "Error: VICE emulator not found. Please install vice package."
     echo "  Ubuntu/Debian: sudo apt install vice"

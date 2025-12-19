@@ -1,20 +1,12 @@
 #!/bin/bash
-# Run Pac-Man in VICE with remote monitor
-cd "$(dirname "$0")"
+set -euo pipefail
 
-echo "Starting VICE with Pac-Man..."
+# Wrapper: delegate to repo root `run_vice.sh`
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Unset Snap/VS Code specific variables that cause conflicts
-unset LD_LIBRARY_PATH
-unset GTK_PATH
-unset GIO_MODULE_DIR
-unset GTK_IM_MODULE_FILE
-unset LOCPATH
-
-if [[ ! -f "pacman.prg" ]]; then
+if [[ ! -f "$SCRIPT_DIR/pacman.prg" ]]; then
     echo "Building first..."
-    ./build.sh
+    (cd "$SCRIPT_DIR" && bash ./build.sh)
 fi
 
-# Run x64 with autostart
-x64 -remotemonitor -autostart "$PWD/pacman.prg" &
+exec "$SCRIPT_DIR/../run_vice.sh" "$SCRIPT_DIR/pacman.prg"

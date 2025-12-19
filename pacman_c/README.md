@@ -1,5 +1,7 @@
 # Pac-Man for Commodore 64
 
+![Pac-Man C Demo](pacman.gif)
+
 A Pac-Man clone written in C using the cc65 compiler, demonstrating AI-assisted game development for the C64.
 
 ## Features

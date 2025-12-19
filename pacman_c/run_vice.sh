@@ -1,4 +1,6 @@
 #!/bin/bash
-# Run Pac-Man in VICE with remote monitor
-cd "$(dirname "$0")"
-x64 -remotemonitor pacman.prg
+set -euo pipefail
+
+# Wrapper: delegate to repo root `run_vice.sh`
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/../run_vice.sh" "$SCRIPT_DIR/pacman.prg"

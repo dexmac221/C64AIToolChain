@@ -55,12 +55,12 @@ Every code modification MUST follow this cycle:
 ├─────────────────────────────────────────────────────────────┤
 │  1. EDIT    → Modify source code (.c, .s, .h files)        │
 │  2. BUILD   → Run build.sh or cl65/ca65                    │
-│  3. RELOAD  → python3 reload_game.py <program.prg>         │
-│  4. CAPTURE → Take screenshot via VICE monitor             │
-│  5. ANALYZE → Run vlm_look.py --existing <screenshot>      │
-│  6. WAIT    → Wait for complete VLM response               │
-│  7. DECIDE  → Based on VLM output, plan next change        │
-│  8. REPEAT  → Go back to step 1                            │
+│  3. RELOAD  → python3 reload_game.py <dir_or_prg>          │
+│  4. ANALYZE → Choose your tool:                            │
+│               a) python3 ai_toolchain.py (Fast Logic)      │
+│               b) python3 vlm_look.py (Deep Vision)         │
+│  5. DECIDE  → Based on output, plan next change            │
+│  6. REPEAT  → Go back to step 1                            │
 └─────────────────────────────────────────────────────────────┘
 ```
 

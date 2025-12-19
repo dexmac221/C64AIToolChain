@@ -13,19 +13,38 @@ As an AI agent, you have **no direct visual perception**. You cannot:
 - Observe sprite movements
 - Verify graphical output directly
 
-**Solutions** (choose based on setup):
-1. **ASCII Art** (`look_screen.py`) - Works anywhere, low-fi
-2. **VLM Vision** (`vlm_look.py`) - TRUE vision via local Ollama VLM
-3. **Memory Reading** (`ai_toolchain.py`) - Direct game state access
+**Solutions** (choose based on task):
+1. **Fast Feedback** (`ai_toolchain.py`) - Instant ASCII representation of screen RAM. Best for checking positions, scores, and basic logic.
+2. **Deep Vision** (`vlm_look.py`) - TRUE vision via local Ollama VLM. Best for checking graphical glitches, colors, and complex visual states.
+3. **ASCII Art Fallback** (`look_screen.py`) - Low-fi screenshot conversion. Use if VLM is unavailable.
 
 ---
 
 ## Available Tools
 
-### 1. `vlm_look.py` - TRUE Vision via Local VLM (Best Option!)
+### 1. `ai_toolchain.py` - Fast ASCII Feedback (Recommended for Logic)
 
-**This is the gold standard** - uses a local Vision Language Model (Qwen3-VL, LLaVA) 
-via Ollama to actually SEE and DESCRIBE the screen in natural language.
+**Use this first.** It connects to the VICE monitor and dumps the screen RAM ($0400) as text. It is instant and perfect for verifying game logic (e.g., "Did the snake move to the right?").
+
+```bash
+python3 ai_toolchain.py
+```
+
+**Output:**
+```
++----------------------------------------+
+|SCORE: 005                              |
+|                                        |
+|          OOOO                          |
+|             O                          |
+|             *                          |
++----------------------------------------+
+```
+
+### 2. `vlm_look.py` - TRUE Vision via Local VLM (Best for Graphics)
+
+**This is the gold standard for visual verification** - uses a local Vision Language Model (Qwen3-VL, LLaVA) 
+via Ollama to actually SEE and DESCRIBE the screen in natural language. Use this when you need to verify sprite animations, colors, or things that don't show up in ASCII.
 
 ```bash
 # Basic usage - capture and analyze
@@ -43,7 +62,7 @@ python3 vlm_look.py --existing game_screenshot.png
 # List available VLM models
 python3 vlm_look.py --list-models
 
-# Remote Ollama server (default: 192.168.1.62)
+# Remote Ollama server (default is localhost; override when remote)
 python3 vlm_look.py --host http://192.168.1.62:11434
 ```
 
@@ -72,7 +91,7 @@ None evident. Sprites render cleanly.
 ```
 
 **Requirements:**
-- Ollama running on 192.168.1.62 (or specified host): `ollama serve`
+- Ollama running (default: localhost:11434, or specified host): `ollama serve`
 - VLM model installed: `ollama pull qwen3-vl`
 
 ### 2. `look_screen.py` - ASCII Art Fallback
