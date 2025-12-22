@@ -1,5 +1,9 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:conda",
     "python-envs.defaultPackageManager": "ms-python.python:conda",
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "terminal.integrated.enablePersistentSessions": true,
+    "terminal.integrated.persistentSessionReviveProcess": "always",
+    "github.copilot.chat.runCommand.enabled": true,
+    "github.copilot.chat.terminalChatLocation": "terminal"
 }

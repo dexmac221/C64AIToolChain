@@ -50,7 +50,7 @@ Written in C using the `cc65` compiler.
 - **Why it works**: The C compiler acts as a deterministic "guard rail." It handles memory allocation, stack management, and variable scope automatically. This reduces the cognitive load on the AI, preventing "hallucinations" where the AI invents non-existent opcodes or mismanages memory addresses.
 - **Result**: A stable, playable game with complex logic (ghost AI, collision detection) implemented quickly.
 
-### 2. The Assembly Version (`pacman_asm/`) - **Experimental**
+### 2. The Assembly Version (`pacman/`) - **Experimental**
 Written in raw 6502 Assembly.
 - **Status**: Functional but prone to subtle bugs (e.g., ghost movement logic errors, variable clobbering).
 - **The Challenge**: Writing raw Assembly is like predicting a chaotic time series. The AI must mentally track the state of every register (A, X, Y), flags, and memory address at every cycle.

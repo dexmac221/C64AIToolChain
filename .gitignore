@@ -5,6 +5,7 @@
 *.lst
 *.bmp
 *.png
+!christmas/christmas.png
 __pycache__/
 vice.log
 vice.log.*
