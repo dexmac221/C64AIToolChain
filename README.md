@@ -38,6 +38,15 @@ The repository includes a complete **Snake** game developed using this toolchain
 - **Hardware RNG**: Using the CIA timers for random number generation.
 - **AI Demo Mode**: An autonomous mode where the game plays itself, verified by the toolchain.
 
+## Christmas Demo
+
+![Christmas Demo](christmas/christmas.gif)
+
+A festive demo showcasing:
+- **Advanced Image Conversion**: LAB color matching + Floyd-Steinberg dithering.
+- **SID Music**: Jingle Bells melody.
+- **Snow Animation**: Procedural effects over static graphics.
+
 ## Case Study: Pac-Man (C vs Assembly)
 
 ![Pac-Man C Demo](pacman_c/pacman.gif)
