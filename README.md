@@ -56,6 +56,23 @@ Written in raw 6502 Assembly.
 - **The Challenge**: Writing raw Assembly is like predicting a chaotic time series. The AI must mentally track the state of every register (A, X, Y), flags, and memory address at every cycle.
 - **Conclusion**: While powerful, pure Assembly increases the risk of "logic drift" or hallucination. Using a high-level language like C with a deterministic compiler (`cc65`) provides a much more reliable foundation for AI code generation, allowing the AI to focus on *logic* rather than *plumbing*.
 
+## New Addition: Space Invaders
+
+![Space Invaders Demo](invaders/invaders.gif)
+
+A faithful recreation of the arcade classic, written in **C** (`cc65`).
+- **Features**: 55 custom pixel-art aliens (animated), 4 destructible shields, UFO mystery ship, and full sound effects.
+- **AI Verified**: The game's visuals (alien formations, HUD, sprites) were verified using **Google Gemini 3 VLM**, ensuring the rendering loop and sprite multiplexing work correctly.
+- **Tech Stack**: C for logic + pure VRAM charset manipulation for fluid animations.
+
+## New Addition: Arkanoid
+
+![Arkanoid Demo](arkanoid/arkanoid.gif)
+
+A Breakout/Arkanoid clone demonstrating advanced physics in C.
+- **Features**: 8-bit fixed-point physics for ball movement, sprite-based paddle and ball, multi-hit bricks, and 5 difficulty levels.
+- **Optimization**: Uses a constrained 27-column playfield to keep sprite X-coordinates within the single-byte (0-255) range for performance efficiency.
+
 ## Getting Started
 
 ### Prerequisites
