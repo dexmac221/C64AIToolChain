@@ -1,13 +1,26 @@
-*.prg
+# Build artifacts
 *.o
 *.map
 *.lbl
 *.lst
+
+# Temp images from VICE/screenshots
 *.bmp
 *.png
+*.jpg
+*.jpeg
+screenshot*.png
+c64_screen*.png
+vice_screen*.png
+
+# Allow specific tracked images
 !christmas/christmas.png
+!newyear/newyear.png
+
+# Runtime logs
 __pycache__/
 vice.log
 vice.log.*
-screenshot*.png
-c64_screen*.png
+
+# Video source files (keep GIFs, ignore MP4s)
+*.mp4

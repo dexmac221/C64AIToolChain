@@ -1,35 +1,110 @@
 # C64AIToolChain
 
-**C64AIToolChain** is a Commodore 64 development toolchain designed as a **creative benchmark for AI agents**. It uses AI models (tested with **Google Gemini 3** and **Claude Opus 4.6**) inside **Visual Studio Code with GitHub Copilot** to develop C and assembly code for the Commodore 64.
+**C64AIToolChain** is a Commodore 64 development toolchain designed as a **creative benchmark for AI agents**. It uses AI models inside **Visual Studio Code with GitHub Copilot** (agent mode) to develop C and assembly games for the Commodore 64.
 
-This project demonstrates a workflow where AI models can write, debug, and even playtest 6510 assembly/C games by providing them with a structured feedback loop involving the VICE emulator and Python-based visual verification.
+**Tested with:** **Google Gemini 3** · **Claude Opus 4.6**
 
 ### How It Works as a Benchmark
 
 The agent is given access to the workspace via GitHub Copilot in VS Code and asked to:
-1. **Analyze** the project structure, existing games, and development rules
+1. **Analyze** the project structure, existing games, and development rules (`AGENT_RULES.md`, `AGENT_HOWTO.md`)
 2. **Understand** the constraints (6502 CPU, 64KB RAM, VIC-II, SID, cc65 compiler)
 3. **Generate a game** — either a classic clone or, for the creative benchmark, an entirely **new original game** by combining mechanics from existing ones
 
 This tests sustained, multi-domain autonomous problem-solving: game design, systems programming, hardware constraints, memory layout, visual debugging, and iterative refinement — all in a single unbroken session. Unlike benchmarks such as ARC-AGI (pattern recognition), SWE-bench (isolated bug fixes), or HumanEval (function-level generation), this measures an agent's ability to **hold a complex constrained system in context and ship a working product**.
 
+> **All `.prg` files are included pre-compiled** — load them directly in VICE without needing cc65.
+
+---
+
+## 🎮 Game Showcase
+
+### ☄️ METEOR STORM — *AI Original (Claude Opus 4.6)*
+
+<p align="center">
+  <img src="meteor/meteor.gif" alt="Meteor Storm Demo" width="480">
+</p>
+
+An **original game** (not a clone) created entirely by Claude Opus 4.6 via GitHub Copilot. The agent analyzed the existing codebase and designed something new by combining mechanics from Asteroids (splitting meteors), Space Invaders (destructible shields), and Arkanoid (power-up drops).
+
+**1,581 lines of C** · 14 custom characters · 4 hardware sprites · 3-voice SID sound · parallax starfield · combo scoring · UFO bonus · demo AI · progressive wave difficulty.
+
+The agent autonomously found and fixed 7 bugs, including a critical memory layout overlap requiring a custom cc65 linker configuration. Full write-up: [meteor/MEDIUM_ARTICLE.md](meteor/MEDIUM_ARTICLE.md)
+
+---
+
+### 👾 Space Invaders
+
+<p align="center">
+  <img src="invaders/invaders.gif" alt="Space Invaders Demo" width="480">
+</p>
+
+A faithful recreation of the arcade classic, written in **C** (`cc65`). 55 custom pixel-art aliens (animated), 4 destructible shields, UFO mystery ship, and full SID sound effects. Visuals verified using Google Gemini 3 VLM.
+
+---
+
+### 🧱 Arkanoid
+
+<p align="center">
+  <img src="arkanoid/arkanoid.gif" alt="Arkanoid Demo" width="480">
+</p>
+
+A Breakout/Arkanoid clone with 8-bit fixed-point ball physics, sprite-based paddle and ball, multi-hit bricks, and 5 difficulty levels. Uses a constrained 27-column playfield to keep sprite X-coordinates within the single-byte (0–255) range.
+
+---
+
+### 🟡 Pac-Man
+
+<p align="center">
+  <img src="pacman_c/pacman.gif" alt="Pac-Man Demo" width="480">
+</p>
+
+Two versions: **C** (`pacman_c/`, recommended) and **6502 Assembly** (`pacman/`). The C version is fully functional with ghost AI and collision detection. The assembly version demonstrates the challenges of pure asm generation — the compiler acts as a "guard rail" that prevents AI hallucinations on register/memory management.
+
+---
+
+### 🐍 Snake
+
+<p align="center">
+  <img src="snake/snake.gif" alt="Snake Demo" width="480">
+</p>
+
+The original proof-of-concept game for this toolchain. Written in 6502 Assembly with zero-page optimization, hardware RNG via CIA timers, and an AI demo mode where the game plays itself — verified by the toolchain's visual feedback loop.
+
+---
+
+### Other Games
+
+The repository also includes several additional C64 demos and games:
+
+| Game | Directory | Description |
+|------|-----------|-------------|
+| **Tetris** | `tetris_v1/`, `tetris_v2/` | Two versions of the classic block puzzle |
+| **Pong** | `pong/` | Classic two-paddle game |
+| **Breakout** | `breakout/` | Brick-breaking game |
+| **Bounce** | `bounce/` | Ball bouncing demo |
+| **Plasma** | `plasma/` | Classic plasma effect demo |
+| **Starfield** | `starfield/` | Scrolling star parallax effect |
+| **Rasterbars** | `rasterbars/` | VIC-II raster bar color effect |
+| **Fire** | `fire/` | Fire animation effect |
+| **Scroller** | `scroller/` | Text scrolling demo |
+| **Matrix** | `matrix/` | Matrix rain effect with custom kanji charset |
+| **Christmas** | `christmas/` | Seasonal PETSCII art display |
+
+---
+
+## Architecture
+
 ```mermaid
 graph TD
-    AI[AI Agent / User] -->|Writes .s code| Code[Assembly Code]
+    AI[AI Agent / User] -->|Writes C or ASM code| Code[Source Code]
     Code -->|cc65| Binary[.prg File]
     Binary -->|reload_game.py| VICE[VICE Emulator]
     VICE -->|Remote Monitor :6510| Bridge[ai_toolchain.py]
     Bridge -->|ASCII Screen Dump| AI
+    VICE -->|Screenshot| VLM[vlm_look.py + Ollama]
+    VLM -->|Visual Analysis| AI
 ```
-
-## Core Concept
-
-Developing in 6510 Assembly is challenging due to the lack of modern debugging tools and the complexity of memory management. **C64AIToolChain** solves this by creating a bridge:
-
-1.  **Code Generation**: You (or the AI) write 6510 Assembly.
-2.  **Automated Build**: `cc65` compiles the code instantly.
-3.  **Hot Reload**: The binary is injected into a running VICE emulator without a reset.
-4.  **Visual Feedback**: A Python script connects to the VICE binary monitor, reads the screen RAM (`$0400`), and converts it into a text-based grid that an AI agent can "see" and analyze.
 
 ## The Stack
 
@@ -37,72 +112,10 @@ Developing in 6510 Assembly is challenging due to the lack of modern debugging t
   - **Google Gemini 3** — classic game clones (Space Invaders, Arkanoid, Pac-Man, Pong, Tetris, etc.)
   - **Claude Opus 4.6** (via GitHub Copilot in VS Code) — original game creation (METEOR STORM), autonomous debugging including memory layout fixes
 - **IDE**: Visual Studio Code with GitHub Copilot agent mode
-- **Compiler**: `cc65` (6502/6510 cross-compiler, C and assembly).
-- **Emulator**: `VICE` (x64sc) running in remote monitor mode.
-- **VLM**: Ollama with vision models (e.g., `qwen3-vl`) for visual verification of game output.
-- **Bridge**: Python 3 scripts (`ai_toolchain.py`, `vlm_look.py`) handling socket communication and visual feedback.
-
-## Included Example: Snake
-
-![Snake Game Demo](snake/snake.gif)
-
-The repository includes a complete **Snake** game developed using this toolchain. It serves as a proof-of-concept for:
-- **Zero Page Optimization**: Efficient use of the 6510's fastest memory.
-- **Hardware RNG**: Using the CIA timers for random number generation.
-- **AI Demo Mode**: An autonomous mode where the game plays itself, verified by the toolchain.
-
-## Case Study: Pac-Man (C vs Assembly)
-
-![Pac-Man C Demo](pacman_c/pacman.gif)
-
-This project includes two versions of Pac-Man to demonstrate a critical finding in AI-assisted development:
-
-### 1. The C Version (`pacman_c/`) - **Highly Recommended**
-Written in C using the `cc65` compiler.
-- **Status**: Fully functional, robust, and easy to modify.
-- **Why it works**: The C compiler acts as a deterministic "guard rail." It handles memory allocation, stack management, and variable scope automatically. This reduces the cognitive load on the AI, preventing "hallucinations" where the AI invents non-existent opcodes or mismanages memory addresses.
-- **Result**: A stable, playable game with complex logic (ghost AI, collision detection) implemented quickly.
-
-### 2. The Assembly Version (`pacman/`) - **Experimental**
-Written in raw 6502 Assembly.
-- **Status**: Functional but prone to subtle bugs (e.g., ghost movement logic errors, variable clobbering).
-- **The Challenge**: Writing raw Assembly is like predicting a chaotic time series. The AI must mentally track the state of every register (A, X, Y), flags, and memory address at every cycle.
-- **Conclusion**: While powerful, pure Assembly increases the risk of "logic drift" or hallucination. Using a high-level language like C with a deterministic compiler (`cc65`) provides a much more reliable foundation for AI code generation, allowing the AI to focus on *logic* rather than *plumbing*.
-
-## New Addition: Space Invaders
-
-![Space Invaders Demo](invaders/invaders.gif)
-
-A faithful recreation of the arcade classic, written in **C** (`cc65`).
-- **Features**: 55 custom pixel-art aliens (animated), 4 destructible shields, UFO mystery ship, and full sound effects.
-- **AI Verified**: The game's visuals (alien formations, HUD, sprites) were verified using **Google Gemini 3 VLM**, ensuring the rendering loop and sprite multiplexing work correctly.
-- **Tech Stack**: C for logic + pure VRAM charset manipulation for fluid animations.
-
-## New Addition: Arkanoid
-
-![Arkanoid Demo](arkanoid/arkanoid.gif)
-
-A Breakout/Arkanoid clone demonstrating advanced physics in C.
-- **Features**: 8-bit fixed-point physics for ball movement, sprite-based paddle and ball, multi-hit bricks, and 5 difficulty levels.
-- **Optimization**: Uses a constrained 27-column playfield to keep sprite X-coordinates within the single-byte (0-255) range for performance efficiency.
-
-## Creative Benchmark: METEOR STORM
-
-*Generated entirely by Claude Opus 4.6 via GitHub Copilot in VS Code — with a single human hint during debugging.*
-
-METEOR STORM is an **original game** (not a clone) created by asking the AI agent to analyze the existing codebase and design something new by combining mechanics from multiple classic games:
-
-| Mechanic | Inspired By |
-|----------|-------------|
-| Large meteors split into 2 small ones | *Asteroids* |
-| 4 destructible shield bunkers | *Space Invaders* |
-| Power-ups drop from destroyed meteors | *Arkanoid* |
-
-**Features**: 1,581 lines of C, 14 custom characters, 4 hardware sprites, 3-voice SID sound, parallax starfield, combo scoring, UFO bonus, demo AI, progressive wave difficulty.
-
-**The interesting part**: The agent autonomously found and fixed 7 bugs, including a critical memory layout overlap where the 12KB program was overwriting its own sprite data at `$3000`. The fix required designing a custom cc65 linker configuration with a zero-filled memory gap — a problem that demands understanding of C64 flat binary loading, VIC-II bank selection, and linker segment placement.
-
-Full write-up: [meteor/MEDIUM_ARTICLE.md](meteor/MEDIUM_ARTICLE.md)
+- **Compiler**: `cc65` (6502/6510 cross-compiler, C and assembly)
+- **Emulator**: `VICE` (x64sc) running in remote monitor mode
+- **VLM**: Ollama with vision models (e.g., `qwen3-vl`) for visual verification of game output
+- **Bridge**: Python 3 scripts (`ai_toolchain.py`, `vlm_look.py`) handling socket communication and visual feedback
 
 ## Getting Started
 
@@ -122,7 +135,16 @@ cd C64AIToolChain
 sudo apt install cc65 vice python3
 ```
 
-### The Workflow
+### Quick Start — Play a Game
+
+Every game directory includes a pre-compiled `.prg` file. Just launch it:
+
+```bash
+cd meteor
+./run_vice.sh
+```
+
+### The AI Development Workflow
 
 1.  **Launch the Environment**:
     Start VICE with the remote monitor enabled.
@@ -132,13 +154,13 @@ sudo apt install cc65 vice python3
     ```
 
 2.  **Run the Toolchain**:
-    In a separate terminal, start the Python bridge. This will visualize the C64 screen in your terminal, allowing you (or an AI agent) to verify the game state.
+    In a separate terminal, start the Python bridge. This visualizes the C64 screen as ASCII, allowing an AI agent to verify the game state.
     ```bash
     python3 ai_toolchain.py
     ```
 
 3.  **Iterate**:
-    Modify `snake/snake.s`. Then, run the reload script to build and inject the new code instantly:
+    Modify the source, rebuild, and hot-reload:
     ```bash
     ./build.sh && python3 reload_game.py
     ```
