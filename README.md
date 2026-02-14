@@ -29,7 +29,7 @@ An **original game** (not a clone) created entirely by Claude Opus 4.6 via GitHu
 
 **1,581 lines of C** · 14 custom characters · 4 hardware sprites · 3-voice SID sound · parallax starfield · combo scoring · UFO bonus · demo AI · progressive wave difficulty.
 
-The agent autonomously found and fixed 7 bugs, including a critical memory layout overlap requiring a custom cc65 linker configuration. Full write-up: [meteor/MEDIUM_ARTICLE.md](meteor/MEDIUM_ARTICLE.md)
+The agent autonomously found and fixed 7 bugs, including a critical memory layout overlap requiring a custom cc65 linker configuration. Full write-up: [articles/METEOR_STORM.md](articles/METEOR_STORM.md)
 
 ---
 
@@ -128,7 +128,7 @@ graph TD
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/C64AIToolChain.git
+git clone https://github.com/dexmac221/C64AIToolChain.git
 cd C64AIToolChain
 
 # Install dependencies (Linux)
@@ -184,6 +184,9 @@ The eyes of the system. It connects to `localhost:6510`, dumps memory range `$04
 - Are the walls drawing?
 - Is the score updating?
 
+### `vlm_look.py`
+The "brain" of the visual feedback loop. It takes a screenshot from VICE, sends it to a local Ollama instance (running `qwen3-vl` or similar), and returns a structured analysis of the game state (sprites, text, glitches). This allows the agent to "see" the game screen and verify visual elements that `ai_toolchain.py` (which only sees text RAM) might miss.
+
 ### `reload_game.py`
 The hands of the system. It automates the tedious process of detaching the disk image, loading the new PRG, and restarting the program execution, preserving the emulator window.
 
@@ -199,6 +202,13 @@ Capture screenshots from VICE via the remote monitor. Supports multiple formats.
 
 # Formats: 0=BMP, 1=PCX, 2=PNG, 3=GIF, 4=IFF
 ```
+
+## References
+
+*   [The Commodore 64 Constraint: Why Gemini 3 is the First AI to Beat the Tetris Test](https://medium.com/@gianlucabailo/the-commodore-64-constraint-why-gemini-3-is-the-first-ai-to-beat-the-tetris-test-6db84609ae15)
+*   [I Made Claude and Gemini Write Tetris for a 1982 Computer](https://medium.com/@gianlucabailo/i-made-claude-and-gemini-write-tetris-for-a-1982-computer-cc5c85936f8d)
+*   [Claude 4.6 and the Commodore 64: When an LLM Writes, Builds, and Playtests Its Own Game](https://medium.com/ai-advances/claude-4-6-and-the-commodore-64-when-an-llm-writes-builds-and-playtests-its-own-game-bdeb9dca3c74)
+*   [METEOR STORM: Full creative process log](articles/METEOR_STORM.md)
 
 ## License
 MIT
