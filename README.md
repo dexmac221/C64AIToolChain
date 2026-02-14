@@ -1,8 +1,17 @@
 # C64AIToolChain
 
-**C64AIToolChain** is a Commodore 64 toolchain using agents and Google Gemini 3 to develop assembler code for the Commodore 64.
+**C64AIToolChain** is a Commodore 64 development toolchain designed as a **creative benchmark for AI agents**. It uses AI models (tested with **Google Gemini 3** and **Claude Opus 4.6**) inside **Visual Studio Code with GitHub Copilot** to develop C and assembly code for the Commodore 64.
 
-This project demonstrates a workflow where AI models can write, debug, and even playtest 6510 assembly games by providing them with a structured feedback loop involving the VICE emulator and Python-based visual verification.
+This project demonstrates a workflow where AI models can write, debug, and even playtest 6510 assembly/C games by providing them with a structured feedback loop involving the VICE emulator and Python-based visual verification.
+
+### How It Works as a Benchmark
+
+The agent is given access to the workspace via GitHub Copilot in VS Code and asked to:
+1. **Analyze** the project structure, existing games, and development rules
+2. **Understand** the constraints (6502 CPU, 64KB RAM, VIC-II, SID, cc65 compiler)
+3. **Generate a game** — either a classic clone or, for the creative benchmark, an entirely **new original game** by combining mechanics from existing ones
+
+This tests sustained, multi-domain autonomous problem-solving: game design, systems programming, hardware constraints, memory layout, visual debugging, and iterative refinement — all in a single unbroken session. Unlike benchmarks such as ARC-AGI (pattern recognition), SWE-bench (isolated bug fixes), or HumanEval (function-level generation), this measures an agent's ability to **hold a complex constrained system in context and ship a working product**.
 
 ```mermaid
 graph TD
@@ -24,10 +33,14 @@ Developing in 6510 Assembly is challenging due to the lack of modern debugging t
 
 ## The Stack
 
-- **AI Model**: Google Gemini 3 (for logic generation, optimization, and debugging).
-- **Compiler**: `cc65` (6502/6510 cross-assembler).
-- **Emulator**: `VICE` (x64) running in remote monitor mode.
-- **Bridge**: Python 3 scripts (`ai_toolchain.py`) handling the socket communication.
+- **AI Models (tested)**:
+  - **Google Gemini 3** — classic game clones (Space Invaders, Arkanoid, Pac-Man, Pong, Tetris, etc.)
+  - **Claude Opus 4.6** (via GitHub Copilot in VS Code) — original game creation (METEOR STORM), autonomous debugging including memory layout fixes
+- **IDE**: Visual Studio Code with GitHub Copilot agent mode
+- **Compiler**: `cc65` (6502/6510 cross-compiler, C and assembly).
+- **Emulator**: `VICE` (x64sc) running in remote monitor mode.
+- **VLM**: Ollama with vision models (e.g., `qwen3-vl`) for visual verification of game output.
+- **Bridge**: Python 3 scripts (`ai_toolchain.py`, `vlm_look.py`) handling socket communication and visual feedback.
 
 ## Included Example: Snake
 
@@ -72,6 +85,24 @@ A faithful recreation of the arcade classic, written in **C** (`cc65`).
 A Breakout/Arkanoid clone demonstrating advanced physics in C.
 - **Features**: 8-bit fixed-point physics for ball movement, sprite-based paddle and ball, multi-hit bricks, and 5 difficulty levels.
 - **Optimization**: Uses a constrained 27-column playfield to keep sprite X-coordinates within the single-byte (0-255) range for performance efficiency.
+
+## Creative Benchmark: METEOR STORM
+
+*Generated entirely by Claude Opus 4.6 via GitHub Copilot in VS Code — with a single human hint during debugging.*
+
+METEOR STORM is an **original game** (not a clone) created by asking the AI agent to analyze the existing codebase and design something new by combining mechanics from multiple classic games:
+
+| Mechanic | Inspired By |
+|----------|-------------|
+| Large meteors split into 2 small ones | *Asteroids* |
+| 4 destructible shield bunkers | *Space Invaders* |
+| Power-ups drop from destroyed meteors | *Arkanoid* |
+
+**Features**: 1,581 lines of C, 14 custom characters, 4 hardware sprites, 3-voice SID sound, parallax starfield, combo scoring, UFO bonus, demo AI, progressive wave difficulty.
+
+**The interesting part**: The agent autonomously found and fixed 7 bugs, including a critical memory layout overlap where the 12KB program was overwriting its own sprite data at `$3000`. The fix required designing a custom cc65 linker configuration with a zero-filled memory gap — a problem that demands understanding of C64 flat binary loading, VIC-II bank selection, and linker segment placement.
+
+Full write-up: [meteor/MEDIUM_ARTICLE.md](meteor/MEDIUM_ARTICLE.md)
 
 ## Getting Started
 
