@@ -33,6 +33,18 @@ The agent autonomously found and fixed 7 bugs, including a critical memory layou
 
 ---
 
+### 🚀 Dreadline
+
+<p align="center">
+  <img src="screenshots/dreadline.png" alt="Dreadline Screenshot" width="480">
+</p>
+
+An original low-altitude attack game inspired by the feel of Uridium-style dreadnought runs, built as a mixed C and 6502 assembly project. Dreadline combines hardware sprites, generated multicolor sprite art, a bitmap-authored hi-res custom character deck, and an assembly row scroller to keep the background moving smoothly on a stock C64.
+
+The asset pipeline is part of the experiment: `spritegen.py` converts editable ASCII art into C64 multicolor sprites, while `bggen.py` turns `deck_bitmap.pgm` into a deduplicated custom charset plus screen and color maps. Full write-up: [articles/DREADLINE.md](articles/DREADLINE.md)
+
+---
+
 ### 👾 Space Invaders
 
 <p align="center">
