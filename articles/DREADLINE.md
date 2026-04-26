@@ -255,6 +255,52 @@ The important lesson is that the AI did not simply write a large patch and hope.
 
 ---
 
+## Development Step Gallery
+
+The original intermediate VICE screenshots were temporary working files and were not retained. The images below are reconstructed phase captures made after the fact to document the visual direction of each step. The final image is the real emulator screenshot committed with the project.
+
+### Phase 1: C Background Redraw
+
+<p align="center">
+  <img src="../screenshots/dreadline_steps/phase_1_c_redraw.png" alt="Dreadline phase 1 reconstructed screenshot" width="480">
+</p>
+
+The earliest renderer proved the side-scrolling deck concept, but the full-screen redraw approach made the game visibly slow.
+
+### Phase 2: Assembly Row Scroller
+
+<p align="center">
+  <img src="../screenshots/dreadline_steps/phase_2_asm_scroll.png" alt="Dreadline phase 2 reconstructed screenshot" width="480">
+</p>
+
+The background became a row-copy problem: assembly shifted existing screen and color RAM while C generated only the new rightmost column.
+
+### Phase 3: Multicolor Sprites
+
+<p align="center">
+  <img src="../screenshots/dreadline_steps/phase_3_multicolor_sprites.png" alt="Dreadline phase 3 reconstructed screenshot" width="480">
+</p>
+
+The sprite pipeline replaced plain single-color shapes with generated multicolor frames, animated by sprite pointer swaps.
+
+### Phase 4: Hi-Res Character Deck
+
+<p align="center">
+  <img src="../screenshots/dreadline_steps/phase_4_hires_deck.png" alt="Dreadline phase 4 reconstructed screenshot" width="480">
+</p>
+
+The bitmap source became a custom hi-res character set, preserving a mechanical deck look while keeping character-mode scrolling performance.
+
+### Final Emulator Capture
+
+<p align="center">
+  <img src="../screenshots/dreadline_steps/phase_5_final_emulator.png" alt="Dreadline final emulator screenshot" width="480">
+</p>
+
+The final capture shows the committed game running in VICE with the generated deck, animated sprites, demo mode, and the right-facing ship flame.
+
+---
+
 ## Technical Summary
 
 | Area | Final Choice |
