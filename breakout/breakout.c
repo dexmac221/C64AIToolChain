@@ -307,6 +307,7 @@ unsigned char check_brick_hit(unsigned char bx, unsigned char by) {
     brick_col = rel_col / BRICK_WIDTH;
 
     if (brick_col < 0 || brick_col >= BRICK_COLS) return 0;
+    if (brick_row < 0 || brick_row >= BRICK_ROWS) return 0;
 
     if (bricks[brick_row][brick_col]) {
         bricks[brick_row][brick_col] = 0;
