@@ -136,30 +136,31 @@
 #define GS_OVER   5
 
 /* ═══════════════════════════════════════════════════════════
- *  FROG SPRITE DATA  (24×21, monochrome)
+ *  FROG SPRITE DATA  (24×21, multicolour)
+ *  00 transparent, 01 shared MC1, 10 sprite colour, 11 shared MC2
  * ═══════════════════════════════════════════════════════════ */
 static const unsigned char frog_sprite[63] = {
     0x00,0x00,0x00,
-    0x06,0x60,0x00,
-    0x07,0xE0,0x00,
-    0x1F,0xF8,0x00,
-    0x3F,0xFC,0x00,
-    0x3F,0xFC,0x00,
-    0x1F,0xF8,0x00,
-    0x3F,0xFC,0x00,
-    0x7F,0xFE,0x00,
-    0x6D,0xB6,0x00,
-    0x7F,0xFE,0x00,
-    0x3F,0xFC,0x00,
-    0x1E,0x78,0x00,
-    0x0C,0x30,0x00,
-    0x3C,0x3C,0x00,
-    0x7E,0x7E,0x00,
-    0x7E,0x7E,0x00,
-    0x3C,0x3C,0x00,
-    0x1C,0x38,0x00,
-    0x0E,0x70,0x00,
-    0x06,0x60,0x00
+    0x01,0xA4,0x00,
+    0x06,0xAA,0x40,
+    0x1A,0xAA,0x90,
+    0x6A,0xFA,0xA4,
+    0x6B,0xFE,0xA4,
+    0x6A,0xAA,0xA4,
+    0x69,0xAA,0x64,
+    0x6A,0xAA,0xA4,
+    0x1A,0xAA,0xA4,
+    0x06,0xAA,0x90,
+    0x01,0xAA,0x40,
+    0x05,0x96,0x50,
+    0x16,0x96,0x94,
+    0x5A,0x96,0xA5,
+    0x1A,0x50,0x59,
+    0x05,0x00,0x50,
+    0x05,0x00,0x50,
+    0x14,0x00,0x14,
+    0x50,0x00,0x05,
+    0x00,0x00,0x00
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -194,11 +195,47 @@ static const unsigned char water_pat[8] = {
 };
 /* $69=01 10 10 01 (LTBLUE/BLUE), $96=10 01 01 10 */
 
+static const unsigned char grass_pat[8] = {
+    0x00,0x04,0x11,0x40,0x05,0x10,0x41,0x00
+};
+
+static const unsigned char bank_pat[8] = {
+    0x10,0x00,0x41,0x04,0x10,0x01,0x40,0x04
+};
+
+static const unsigned char road_pat[8] = {
+    0xAA,0x80,0x2A,0x08,0xA0,0x82,0x28,0xAA
+};
+
 /* Hollow pad pattern for empty home spots */
 static const unsigned char pad_pat[8] = {
     0x55,0x41,0x41,0x41,0x41,0x41,0x41,0x55
 };
 /* top+bottom full, sides only */
+
+static const unsigned char car_pat_end[8] = {
+    0x00,0x14,0x3C,0xFF,0xFF,0xBE,0x82,0x00
+};
+
+static const unsigned char car_pat_mid[8] = {
+    0x00,0x14,0x7E,0xFF,0xFF,0xBE,0x82,0x00
+};
+
+static const unsigned char truck_pat_cab[8] = {
+    0x00,0x14,0x3D,0xFF,0xFE,0xBE,0x82,0x00
+};
+
+static const unsigned char truck_pat_mid[8] = {
+    0x00,0x3C,0xFF,0xFF,0xFF,0xBE,0x82,0x00
+};
+
+static const unsigned char log_pat[8] = {
+    0xA5,0x6A,0x95,0x5A,0xA5,0x6A,0x95,0x5A
+};
+
+static const unsigned char turtle_pat[8] = {
+    0x00,0x18,0x7E,0xFF,0x7E,0x3C,0x18,0x00
+};
 
 /* ═══════════════════════════════════════════════════════════
  *  OBJECT TABLE
@@ -275,6 +312,18 @@ static void bmp_custom(unsigned char cx, unsigned char cy,
     COLRAM[cy * 40 + cx] = 0;
 }
 
+static void bmp_pattern(unsigned char cx, unsigned char cy,
+                        const unsigned char *pat8,
+                        unsigned char col01,
+                        unsigned char col10,
+                        unsigned char col11) {
+    unsigned int bofs = ((unsigned int)cy * 40 + cx) * 8;
+    unsigned char p;
+    for (p = 0; p < 8; ++p) BITMAP[bofs + p] = pat8[p];
+    SCREEN[cy * 40 + cx] = (unsigned char)((col01 << 4) | col10);
+    COLRAM[cy * 40 + cx] = col11;
+}
+
 /* HUD font cell */
 static void bmp_glyph(unsigned char cx, unsigned char cy,
                        unsigned char fi, unsigned char fg_col) {
@@ -291,6 +340,14 @@ static void bmp_fill_solid(unsigned char cy, unsigned char col) {
 static void bmp_fill_water(unsigned char cy) {
     unsigned char cx;
     for (cx = 0; cx < SCR_W; ++cx) bmp_water(cx, cy);
+}
+
+static void bmp_fill_pattern(unsigned char cy, const unsigned char *pat8,
+                             unsigned char col01, unsigned char col10,
+                             unsigned char col11) {
+    unsigned char cx;
+    for (cx = 0; cx < SCR_W; ++cx)
+        bmp_pattern(cx, cy, pat8, col01, col10, col11);
 }
 
 /* Map ASCII → font index */
@@ -409,9 +466,34 @@ static void setup_sprite(void) {
     SPR_COL(SPR_FROG)  = GREEN;
     VIC_SPR_ENA    = 0x01;
     VIC_SPR_HI_X   = 0x00;
-    VIC_SPR_MCOLOR = 0x00;
+    VIC_MC1        = YELLOW;
+    VIC_MC2        = LTGREEN;
+    VIC_SPR_MCOLOR = 0x01;
     VIC_SPR_DBL_X  = 0x00;
     VIC_SPR_DBL_Y  = 0x00;
+}
+
+static void draw_bg_cell(unsigned char cx, unsigned char cy) {
+    if (cy == ROW_HUD) {
+        bmp_solid(cx, cy, BLACK);
+    } else if (cy == ROW_HOME) {
+        bmp_pattern(cx, cy, bank_pat, GREEN, LTGREEN, YELLOW);
+    } else if (cy == ROW_PADS) {
+        bmp_pattern(cx, cy, bank_pat, GREEN, LTGREEN, GREEN);
+    } else if (cy >= ROW_RIVER_TOP && cy <= ROW_RIVER_BOT) {
+        bmp_water(cx, cy);
+    } else if (cy == ROW_MEDIAN) {
+        bmp_pattern(cx, cy, grass_pat, GREEN, LTGREEN, YELLOW);
+    } else if (cy >= ROW_ROAD_TOP && cy <= ROW_ROAD_BOT) {
+        if (cy == 11 && (cx & 1))
+            bmp_solid(cx, cy, YELLOW);
+        else
+            bmp_pattern(cx, cy, road_pat, GREY2, GREY1, GREY3);
+    } else if (cy == ROW_START) {
+        bmp_pattern(cx, cy, grass_pat, GREEN, LTGREEN, YELLOW);
+    } else {
+        bmp_pattern(cx, cy, grass_pat, LTGREEN, GREEN, YELLOW);
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -424,32 +506,32 @@ static void draw_fixed_bg(void) {
     bmp_fill_solid(ROW_HUD, BLACK);
 
     /* Row 1: top green bank */
-    bmp_fill_solid(ROW_HOME, GREEN);
+    bmp_fill_pattern(ROW_HOME, bank_pat, GREEN, LTGREEN, YELLOW);
 
     /* Row 2: home pad row — green + 5 empty pads drawn by draw_home_pads() */
-    bmp_fill_solid(ROW_PADS, GREEN);
+    bmp_fill_pattern(ROW_PADS, bank_pat, GREEN, LTGREEN, GREEN);
 
     /* Rows 3-7: river (water wave pattern) */
     for (cy = ROW_RIVER_TOP; cy <= ROW_RIVER_BOT; ++cy)
         bmp_fill_water(cy);
 
     /* Row 8: median strip — lighter green */
-    bmp_fill_solid(ROW_MEDIAN, LTGREEN);
+    bmp_fill_pattern(ROW_MEDIAN, grass_pat, GREEN, LTGREEN, YELLOW);
 
     /* Rows 9-13: road — dark grey */
     for (cy = ROW_ROAD_TOP; cy <= ROW_ROAD_BOT; ++cy)
-        bmp_fill_solid(cy, GREY1);
+        bmp_fill_pattern(cy, road_pat, GREY2, GREY1, GREY3);
 
     /* Row 11: centre dashes — alternating YELLOW cells */
     for (cx = 1; cx < SCR_W; cx += 2)
         bmp_solid(cx, 11, YELLOW);
 
     /* Row 14: start safe zone */
-    bmp_fill_solid(ROW_START, GREEN);
+    bmp_fill_pattern(ROW_START, grass_pat, GREEN, LTGREEN, YELLOW);
 
     /* Rows 15-24: lower safe zone (slightly different shade) */
     for (cy = ROW_START + 1; cy < SCR_H; ++cy)
-        bmp_fill_solid(cy, LTGREEN);
+        bmp_fill_pattern(cy, grass_pat, LTGREEN, GREEN, YELLOW);
 }
 
 static void draw_home_pads(void) {
@@ -498,16 +580,7 @@ static void erase_obj(unsigned char i) {
     for (k = 0; k < obj_len[i]; ++k) {
         sx = obj_cx[i] + (signed char)k;
         if (sx < 0 || sx >= SCR_W) continue;
-        if (cy >= ROW_RIVER_TOP && cy <= ROW_RIVER_BOT)
-            bmp_water((unsigned char)sx, cy);
-        else
-            bmp_solid((unsigned char)sx, cy, GREY1);
-    }
-    /* Restore yellow dashes on road centre line */
-    if (cy == 11) {
-        unsigned char cx;
-        for (cx = 1; cx < SCR_W; cx += 2)
-            bmp_solid(cx, 11, YELLOW);
+        draw_bg_cell((unsigned char)sx, cy);
     }
 }
 
@@ -522,20 +595,23 @@ static void draw_obj(unsigned char i) {
         if (sx < 0 || sx >= SCR_W) continue;
         switch (obj_type[i]) {
         case OBJ_CAR:
-            col = (k == 0 || k == len-1) ? RED : LTRED;
-            bmp_solid((unsigned char)sx, cy, col);
+            col = (cy & 1) ? RED : PURPLE;
+            bmp_pattern((unsigned char)sx, cy,
+                        (k == 0 || k == len-1) ? car_pat_end : car_pat_mid,
+                        WHITE, BLACK, col);
             break;
         case OBJ_TRUCK:
-            col = (k == 0 || k == len-1) ? ORANGE : BROWN;
-            bmp_solid((unsigned char)sx, cy, col);
+            bmp_pattern((unsigned char)sx, cy,
+                        (k == 0) ? truck_pat_cab : truck_pat_mid,
+                        CYAN, BLACK, (k == 0) ? ORANGE : BROWN);
             break;
         case OBJ_LOG:
-            col = (k == 0 || k == len-1) ? BROWN : ORANGE;
-            bmp_solid((unsigned char)sx, cy, col);
+            bmp_pattern((unsigned char)sx, cy, log_pat, BROWN, ORANGE, BLACK);
             break;
         case OBJ_TURTLE:
             if (obj_anim[i] < 6)
-                bmp_solid((unsigned char)sx, cy, GREEN);
+                bmp_pattern((unsigned char)sx, cy, turtle_pat,
+                            LTGREEN, GREEN, BLACK);
             else
                 bmp_water((unsigned char)sx, cy);
             break;
@@ -629,6 +705,14 @@ static void place_frog_sprite(void) {
 /* ═══════════════════════════════════════════════════════════
  *  COLLISION DETECTION
  * ═══════════════════════════════════════════════════════════ */
+static unsigned char obj_contains_x(unsigned char i, unsigned char frog_x) {
+    signed char left  = obj_cx[i];
+    signed char right = left + (signed char)obj_len[i];
+    signed char fx    = (signed char)frog_x;
+
+    return (fx >= left && fx < right) ? 1 : 0;
+}
+
 static unsigned char check_river(void) {
     unsigned char i, cy = frog_cy, cx = frog_cx;
     if (cy < ROW_RIVER_TOP || cy > ROW_RIVER_BOT) return 0;
@@ -636,8 +720,7 @@ static unsigned char check_river(void) {
         if (obj_cy[i] != cy) continue;
         if (obj_type[i] != OBJ_LOG && obj_type[i] != OBJ_TURTLE) continue;
         if (obj_type[i] == OBJ_TURTLE && obj_anim[i] >= 6) continue;
-        if (cx >= (unsigned char)obj_cx[i] &&
-            cx <  (unsigned char)(obj_cx[i]+(signed char)obj_len[i])) {
+        if (obj_contains_x(i, cx)) {
             frog_on_log = i+1; return 1;
         }
     }
@@ -650,8 +733,7 @@ static unsigned char check_road(void) {
     for (i = 0; i < num_objs; ++i) {
         if (obj_cy[i] != cy) continue;
         if (obj_type[i] != OBJ_CAR && obj_type[i] != OBJ_TRUCK) continue;
-        if (cx >= (unsigned char)obj_cx[i] &&
-            cx <  (unsigned char)(obj_cx[i]+(signed char)obj_len[i]))
+        if (obj_contains_x(i, cx))
             return 1;
     }
     return 0;
@@ -746,7 +828,7 @@ static void show_title(void) {
     textcolor(LTGREEN); gotoxy(5,7);  cputs("C64 AI TOOLCHAIN 2026");
     textcolor(YELLOW); gotoxy(4,11);  cputs("CROSS ROAD AND RIVER");
                        gotoxy(5,12);  cputs("REACH ALL 5 HOME PADS");
-    textcolor(CYAN);   gotoxy(6,15);  cputs("JOYSTICK PORT 1");
+    textcolor(CYAN);   gotoxy(6,15);  cputs("JOYSTICK PORT 2");
     textcolor(WHITE);  gotoxy(8,18);  cputs("FIRE  TO  START");
     if (high_score) {
         textcolor(ORANGE); gotoxy(8,21);
@@ -847,7 +929,7 @@ int main(void) {
                 if (cy >= ROW_RIVER_TOP && cy <= ROW_RIVER_BOT)
                     bmp_water(frog_cx, cy);
                 else
-                    bmp_solid(frog_cx, cy, col);
+                    draw_bg_cell(frog_cx, cy);
                 /* restore dash if needed */
                 if (cy == 11 && (frog_cx & 1) == 1)
                     bmp_solid(frog_cx, 11, YELLOW);
@@ -899,6 +981,7 @@ int main(void) {
                 for (w = 0; w < 200; ++w) waitvsync();
             }
             clrscr();
+            frame_count = 0;
             show_title();
             game_state = GS_TITLE;
             continue;
