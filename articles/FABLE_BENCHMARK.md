@@ -123,11 +123,17 @@ The first music pattern was serviceable but polite. The human feedback was preci
 
 The subtlest bug of the whole session was found by the human, not the tooling: *"it scrolls, but it stutters — maybe a double buffer problem?"* Static screenshots looked perfect; even multi-frame motion analysis passed. The cause was one frame of timing skew: the main loop runs early in the frame, *before* the raster split, so a new fine-scroll value took effect immediately — while the $D018 buffer flip it belonged with was latched by the interrupt one frame later. Result: once per coarse step, one frame showed the old buffer at the new scroll position, a 7-pixel back-jump at 6 Hz. The fix latches the fine scroll and the flip together in the top interrupt, and the games' text screens went fully static (text inside a fine-scrolled zone wobbles by construction — so ignition now happens when the game starts).
 
-The rework also made the engine honest about its budget: colour RAM became static (scrolling it costs more than a PAL frame allows), the row copy was spread across four frames, and a missed-frame counter at $033D turned "feels smooth" into a number: **0.1% missed frames** over thirteen minutes.
+The rework also made the engine honest about its budget: colour RAM became static (scrolling its 880 playfield bytes costs more than a PAL frame allows), the row copy was spread across four frames, and a missed-frame counter at $033D turned "feels smooth" into a number: **0.1% missed frames** over thirteen minutes — 38 overruns in ~39,000 frames. A missed frame here means exactly one thing: the raster interrupt ticked a new frame while the main loop was still working, i.e. a game-loop deadline overrun. It does not count interrupt failures (the IRQ always runs) or emulator pauses from monitor connections (emulation is frozen then, no frames tick).
+
+Static colour RAM deserves a precise word, because an earlier draft claimed "per-tile accent colours" and that is no longer true. In the final engine every playfield cell holds one colour value, so every multicolor "11" pixel on screen is the same light blue. The terrain still reads as varied because a multicolor character has *four* colour sources and only one comes from colour RAM: the background and the two shared registers ($D022 dark gray, $D023 mid gray) are free, per-register, and cost nothing to scroll. Ceiling, floor and towers differ by pattern density across those four colours — variety by texture, not by hue. That is the actual compromise, and it is the same one shipped scrollers of the era made.
 
 ### A second agent, and a latency lesson
 
 Like Boulder Rush, ION RIFT plays itself — but a 50 fps shmup broke the Boulder Rush recipe. Reading a kilobyte of screen RAM per decision is too slow and too hard on the emulator's fragile monitor port. The replacement contract: the game publishes six bytes of telemetry per frame (ship, corridor bounds, nearest enemy, state), and takes steering through a *hold* input byte with an in-game watchdog — it expires after half a second unless the agent's heartbeat bit refreshes it, so a dead agent can never pin the ship.
+
+The agent memory map, for the record: `$033C` edge-triggered input (fire), `$033D` missed-frame counter, `$033E` hold input (steering), and the telemetry block at `$0340`: ship Y, first flyable pixel line under the ceiling at the ship's column, top pixel line of the floor or tower at that column, nearest enemy Y ahead ($FF if none), its horizontal distance in half-pixels, and the game state (0 title, 1 playing, 2 game over).
+
+The watchdog works by *value change*, not by bit inspection: the game merges only the low five bits of `$033E` into the input, and any change of the raw byte — including the agent toggling bit 7, which the input path never sees — resets a 25-frame time-to-live. Unchanged byte, TTL counts down; at zero the game clears it. Re-sending the same direction with a flipped heartbeat bit therefore refreshes the hold without altering the input, and the real joystick never touches this byte at all.
 
 `ion_bot.py` flies the corridor, dodges, fires, and restarts its own game overs at ~3 Hz. It plays honestly but mortally: with a 0.3-second reaction time, a dart crossing 60 pixels between decisions is often unavoidable. The in-game demo autopilot, reacting every frame, flies far better — a clean measurement of what reaction latency costs in an action game, and a hint of why the fast loop of the toolchain's dual-loop architecture has to live close to the metal.
 
@@ -160,7 +166,7 @@ One honest open item: the very first ION RIFT build was once seen dropping to th
 |------|--------|
 | Mode | character mode, custom charset at $3800 |
 | Physics | bottom-up cave scan, parity move-flags, rounded-object rolling |
-| Caves | seeded procedural, 40x22, 60% gem quota |
+| Caves | seeded procedural, 40x22; exit opens at 60% of spawned gems |
 | Agent I/O | $033C edge-triggered input byte |
 | Autonomous player | `demo_bot.py`: screen-RAM read → weighted BFS → one write per move |
 | Binary | ~8 KB |
@@ -176,8 +182,9 @@ One honest open item: the very first ION RIFT build was once seen dropping to th
 | Terrain | procedural ring-buffer model, multicolor tiles + hires stars |
 | Assets | single `assetgen.py` pipeline: MCM/hires tiles + MCM sprite frames |
 | Audio | 2-voice pattern engine (pulse bass, saw lead) + sfx voice |
-| Agent I/O | $033C edge-triggered, demo autopilot built in |
-| Binary | ~32 KB PRG (includes the filled VIC bank gap) |
+| Agent I/O | $033C edge fire, $033E watchdog hold, telemetry at $0340 |
+| External agent | `ion_bot.py`: 6-byte telemetry read → steer/dodge/fire at ~3 Hz |
+| Binary | 31.9 KB PRG on disk; ~9.8 KB real code+data (the rest is the zero-filled VIC bank gap the loader streams over) |
 
 ---
 
