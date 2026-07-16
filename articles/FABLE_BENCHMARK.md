@@ -119,6 +119,18 @@ The motion analysis confirmed: terrain scrolling steadily leftward, HUD rows per
 
 The first music pattern was serviceable but polite. The human feedback was precise: *"more tense, like R-Type."* The rework: an octave-hammering minor-key bass on the pulse voice, a faster step rate, and the lead arpeggio turned to sawtooth, cycling Am-F-G before leaning on an E major turn — the dominant that never quite resolves. Tension, in three tables of bytes.
 
+### The human eye, and a one-frame bug
+
+The subtlest bug of the whole session was found by the human, not the tooling: *"it scrolls, but it stutters — maybe a double buffer problem?"* Static screenshots looked perfect; even multi-frame motion analysis passed. The cause was one frame of timing skew: the main loop runs early in the frame, *before* the raster split, so a new fine-scroll value took effect immediately — while the $D018 buffer flip it belonged with was latched by the interrupt one frame later. Result: once per coarse step, one frame showed the old buffer at the new scroll position, a 7-pixel back-jump at 6 Hz. The fix latches the fine scroll and the flip together in the top interrupt, and the games' text screens went fully static (text inside a fine-scrolled zone wobbles by construction — so ignition now happens when the game starts).
+
+The rework also made the engine honest about its budget: colour RAM became static (scrolling it costs more than a PAL frame allows), the row copy was spread across four frames, and a missed-frame counter at $033D turned "feels smooth" into a number: **0.1% missed frames** over thirteen minutes.
+
+### A second agent, and a latency lesson
+
+Like Boulder Rush, ION RIFT plays itself — but a 50 fps shmup broke the Boulder Rush recipe. Reading a kilobyte of screen RAM per decision is too slow and too hard on the emulator's fragile monitor port. The replacement contract: the game publishes six bytes of telemetry per frame (ship, corridor bounds, nearest enemy, state), and takes steering through a *hold* input byte with an in-game watchdog — it expires after half a second unless the agent's heartbeat bit refreshes it, so a dead agent can never pin the ship.
+
+`ion_bot.py` flies the corridor, dodges, fires, and restarts its own game overs at ~3 Hz. It plays honestly but mortally: with a 0.3-second reaction time, a dart crossing 60 pixels between decisions is often unavoidable. The in-game demo autopilot, reacting every frame, flies far better — a clean measurement of what reaction latency costs in an action game, and a hint of why the fast loop of the toolchain's dual-loop architecture has to live close to the metal.
+
 ---
 
 ## What the Loop Caught
