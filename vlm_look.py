@@ -908,10 +908,10 @@ For AI Agent Integration:
             count=args.motion,
             game=args.game,
             host=args.host,
-            model="gemma3"  # Gemma 3 for multi-image
+            model=args.model  # honor -m for motion too
         )
         print("\n" + "="*60)
-        print("MOTION ANALYSIS (Gemma 3)")
+        print(f"MOTION ANALYSIS ({args.model})")
         print("="*60)
         print(result)
         print("="*60 + "\n")

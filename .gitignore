@@ -28,3 +28,4 @@ vice.log.*
 *.mp4
 !boulderdash/gameplay_v1.png
 !boulderdash/demo_bot_playing.png
+!ionrift/ionrift_gameplay.png
