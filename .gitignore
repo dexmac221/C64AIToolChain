@@ -19,8 +19,12 @@ vice_screen*.png
 
 # Runtime logs
 __pycache__/
+.agent_control/
+*.pt
 vice.log
 vice.log.*
 
 # Video source files (keep GIFs, ignore MP4s)
 *.mp4
+!boulderdash/gameplay_v1.png
+!boulderdash/demo_bot_playing.png
