@@ -45,6 +45,26 @@ The asset pipeline is part of the experiment: `spritegen.py` converts editable A
 
 ---
 
+### 💎 Boulder Rush — *Claude Code (Fable)*
+
+<p align="center">
+  <img src="boulderdash/demo_bot_playing.png" alt="Boulder Rush played by its autonomous bot" width="480">
+</p>
+
+A Boulder Dash tribute with authentic cave physics: boulders and gems fall, roll off rounded objects, and are deadly only while falling. Custom charset, seeded procedural caves, SID sfx — and a new benchmark dimension: `demo_bot.py` plays the game autonomously, reading the cave from screen RAM through the VICE monitor, planning with weighted BFS, and steering through the edge-triggered agent input byte at `$033C`.
+
+---
+
+### 🌌 ION RIFT — *Claude Code (Fable)*
+
+<p align="center">
+  <img src="ionrift/ionrift_gameplay.png" alt="ION RIFT gameplay" width="480">
+</p>
+
+A horizontally scrolling shoot-em-up built to go one step past Dreadline: pixel-smooth `$D016` scrolling at 50 fps, a two-interrupt raster split (steady HUD above a scrolling playfield), double-buffered screen RAM flipped in the IRQ, procedural multicolor terrain generated column by column, a unified `assetgen.py` tile+sprite pipeline, and a two-voice SID music engine with a dedicated sfx voice. Write-up: [articles/FABLE_BENCHMARK.md](articles/FABLE_BENCHMARK.md)
+
+---
+
 ### 👾 Space Invaders
 
 <p align="center">
@@ -195,6 +215,35 @@ The eyes of the system. It connects to `localhost:6510`, dumps memory range `$04
 - Did the snake spawn correctly?
 - Are the walls drawing?
 - Is the score updating?
+
+### `async_agent_control.py`
+The fast/slow gameplay testing loop. A local System 1 controller samples VICE hardware state at high frequency, watches sprite registers, collisions, sprite pointers, and screen RAM, then accumulates a Surprise/Frustration score. When the score crosses a threshold, it can either stop and write an interrupt JSON for deliberate inspection, or keep the gameplay thread running while archiving interrupt events and dispatching them to System 2 asynchronously.
+
+```bash
+# Observe Dreadline once
+python3 async_agent_control.py --game dreadline --once
+
+# Run until a slow-loop interrupt is generated
+python3 async_agent_control.py --game dreadline --threshold 12
+
+# Let System 1 drive Dreadline through its monitor-written agent input byte
+./run_vice.sh dreadline/dreadline.prg
+python3 async_agent_control.py --game dreadline --control vice-memory --start-fire-frames 20 --max-frames 300
+
+# Keep the game running and send archived interrupt events to System 2 in the background
+python3 async_agent_control.py --game dreadline --system1 neural --neural-model .agent_control/system1_dreadline.pt --control vice-memory --start-fire-frames 20 --interrupt-mode continue --interrupt-cooldown-frames 30 --system2-script system2_ollama.py --system2-model deepseek-v4-flash:cloud --max-frames 300
+
+# Train and use a neural System 1 distilled from synthetic heuristic data
+python3 neural_system1.py train --output .agent_control/system1_dreadline.pt
+python3 async_agent_control.py --game dreadline --system1 neural --neural-model .agent_control/system1_dreadline.pt --control vice-memory --start-fire-frames 20 --max-frames 300
+
+# Ask an Ollama cloud model to analyze the latest slow-loop interrupt
+python3 system2_ollama.py --model deepseek-v4-flash:cloud --escalate-model deepseek-v4-pro:cloud
+```
+
+Safety note: `--once` leaves VICE paused by default, and the fast loop clamps overly aggressive sampling intervals unless `--unsafe-fast` is explicitly used.
+
+Full architecture: [ASYNC_AGENT_CONTROL.md](ASYNC_AGENT_CONTROL.md)
 
 ### `vlm_look.py`
 The "brain" of the visual feedback loop. It takes a screenshot from VICE, sends it to a local Ollama instance (running `qwen3-vl` or similar), and returns a structured analysis of the game state (sprites, text, glitches). This allows the agent to "see" the game screen and verify visual elements that `ai_toolchain.py` (which only sees text RAM) might miss.
