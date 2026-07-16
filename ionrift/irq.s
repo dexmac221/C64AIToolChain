@@ -15,13 +15,18 @@
 ;   extern unsigned char vsync_flag; incremented once per frame
 
 .export _irq_init
-.export _fine_x, _d018_next, _vsync_flag
+.export _fine_next, _d018_next, _vsync_flag
 
 LINE_TOP   = 40
 LINE_SPLIT = 73                 ; raster line after HUD rows 0-2 (50+24-1)
 
+; The main loop runs early in the frame (before LINE_SPLIT), so a fine
+; scroll value written there would show THIS frame while the $D018
+; buffer flip shows NEXT frame - a 7px back-jump once per coarse step.
+; Both are therefore latched together at the top interrupt.
 .data
-_fine_x:     .byte 7
+_fine_next:  .byte 7            ; written by C, latched at frame top
+disp_fine:   .byte 7            ; value actually displayed this frame
 _d018_next:  .byte $14          ; screen $4400, charset $5000
 _vsync_flag: .byte 0
 
@@ -53,6 +58,8 @@ irq_top:
         sta $d019               ; ack raster IRQ
         lda _d018_next
         sta $d018               ; double buffer flip at frame top
+        lda _fine_next
+        sta disp_fine           ; latch fine scroll with the flip
         lda #$18                ; HUD: MCM on, 40 col, fine scroll 0
         sta $d016
         inc _vsync_flag
@@ -67,7 +74,7 @@ irq_top:
 irq_split:
         lda #$01
         sta $d019
-        lda _fine_x
+        lda disp_fine
         ora #$10                ; MCM on, 38 col, playfield fine scroll
         sta $d016
         lda #LINE_TOP

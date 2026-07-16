@@ -66,26 +66,60 @@
 #define SID_VOL  0xD418
 
 /* --- IRQ engine (irq.s) --- */
-extern volatile unsigned char fine_x;
+extern volatile unsigned char fine_next;   /* latched at frame top */
 extern volatile unsigned char d018_next;
 extern volatile unsigned char vsync_flag;
 void irq_init(void);
 
+unsigned char fine_pos = 7;    /* game-side scroll position 0..7 */
+
 /* --- Row copier (scroll.s) --- */
 extern unsigned char *scr_src;
 extern unsigned char *scr_dst;
+extern unsigned char scr_rows;
 void scroll_rows(void);
+
+/* Playfield accent colour: colour RAM is STATIC (never scrolled).
+   The classic C64 compromise — scrolling 1000 bytes of colour RAM
+   costs more than a frame allows, so all '11' pixels share one
+   accent colour and the terrain detail lives in the char patterns */
+#define PF_COLOR 14              /* light blue accents */
+
+/* Debug: missed-frame counter, readable at $033D from the monitor */
+#define MISS_COUNTER 0x033D
 
 /* --- Playfield geometry --- */
 #define PF_TOP_ROW 3             /* first playfield char row */
 #define PF_ROWS 22
 #define PF_OFFSET (PF_TOP_ROW * 40)
 
-/* --- Agent input ($033C, edge-triggered toolchain convention) --- */
+/* --- Agent I/O (toolchain convention) ---
+   $033C edge-triggered input: consumed and cleared each poll (fire)
+   $033E hold input: persists until the agent rewrites it (steering)
+   $0340+ telemetry block, written every play frame:
+     +0 ship_y  +1 gap top px  +2 gap bottom px
+     +3 nearest enemy y ($FF none)  +4 enemy distance/2  +5 state */
 #define AGENT_INPUT 0x033C
+#define AGENT_HOLD  0x033E
+#define AGENT_TELE  0x0340
+#define ST_TITLE 0
+#define ST_PLAY  1
+#define ST_OVER  2
+
+/* Hold input carries a watchdog: it survives ~25 frames and then
+   expires unless the agent rewrites the byte. The agent toggles bit 7
+   as a heartbeat so rewriting the same direction still refreshes it.
+   A dead agent can never leave the ship pinned to a wall. */
+unsigned char hold_ttl = 0;
+unsigned char hold_last = 0;
+
 unsigned char read_input(void) {
-    unsigned char v = joy_read(JOY_2) | PEEK(AGENT_INPUT);
+    unsigned char h = PEEK(AGENT_HOLD);
+    unsigned char v = joy_read(JOY_2) | PEEK(AGENT_INPUT) | (h & 0x1F);
     POKE(AGENT_INPUT, 0);
+    if (h != hold_last) { hold_last = h; hold_ttl = 25; }
+    else if (hold_ttl)  hold_ttl--;
+    else                POKE(AGENT_HOLD, 0);
     return v;
 }
 
@@ -341,48 +375,35 @@ void gen_column(unsigned char idx) {
     world_col++;
 }
 
-/* Char + colour for playfield row r (0..21) of ring column idx */
-void column_cell(unsigned char idx, unsigned char r,
-                 unsigned char *ch, unsigned char *col) {
-    unsigned char ch_ = 32, col_ = 11;
+/* Char for playfield row r (0..21) of ring column idx */
+unsigned char column_char(unsigned char idx, unsigned char r) {
     unsigned char fl_top = PF_ROWS - floor_h[idx];
 
-    if (r < ceil_h[idx]) {
-        ch_ = (r == ceil_h[idx] - 1) ? T_CEIL_BOT : T_CEIL_FILL;
-        col_ = 11;                          /* cyan MCM */
-    } else if (r >= fl_top) {
-        ch_ = (r == fl_top) ? T_FLOOR_TOP : T_FLOOR_FILL;
-        col_ = 10;                          /* red MCM */
-    } else if (tow_h[idx] && r >= fl_top - tow_h[idx]) {
-        ch_ = (r == fl_top - tow_h[idx]) ? T_TOWER_TOP : T_TOWER;
-        col_ = 14;                          /* blue MCM */
-    } else if (r == star_r[idx]) {
-        ch_ = star_c[idx];
-        col_ = 1;                           /* white hires star */
-    }
-    *ch = ch_;
-    *col = col_;
+    if (r < ceil_h[idx])
+        return (r == ceil_h[idx] - 1) ? T_CEIL_BOT : T_CEIL_FILL;
+    if (r >= fl_top)
+        return (r == fl_top) ? T_FLOOR_TOP : T_FLOOR_FILL;
+    if (tow_h[idx] && r >= fl_top - tow_h[idx])
+        return (r == fl_top - tow_h[idx]) ? T_TOWER_TOP : T_TOWER;
+    if (r == star_r[idx])
+        return star_c[idx];
+    return 32;
 }
 
 void write_column_chars(unsigned char *scr, unsigned char scr_col,
                         unsigned char idx) {
-    unsigned char r, ch, col;
+    unsigned char r;
     unsigned int o = PF_OFFSET + scr_col;
     for (r = 0; r < PF_ROWS; r++) {
-        column_cell(idx, r, &ch, &col);
-        scr[o] = ch;
+        scr[o] = column_char(idx, r);
         o += 40;
     }
 }
 
-void write_column_colors(unsigned char scr_col, unsigned char idx) {
-    unsigned char r, ch, col;
-    unsigned int o = PF_OFFSET + scr_col;
-    for (r = 0; r < PF_ROWS; r++) {
-        column_cell(idx, r, &ch, &col);
-        COLRAM[o] = col;
-        o += 40;
-    }
+void init_colors(void) {
+    unsigned char r;
+    for (r = PF_TOP_ROW; r < PF_TOP_ROW + PF_ROWS; r++)
+        memset(COLRAM + r * 40, PF_COLOR, 40);
 }
 
 void init_terrain(void) {
@@ -394,8 +415,8 @@ void init_terrain(void) {
     for (c = 0; c < 40; c++) {
         write_column_chars(SCREEN_A, c, c);
         write_column_chars(SCREEN_B, c, c);
-        write_column_colors(c, c);
     }
+    init_colors();
 }
 
 /* ================= Scroll engine ================= */
@@ -403,49 +424,55 @@ void init_terrain(void) {
 unsigned char *front_scr(void) { return front ? SCREEN_B : SCREEN_A; }
 unsigned char *back_scr(void)  { return front ? SCREEN_A : SCREEN_B; }
 
-/* Work is spread over the fine-scroll cycle so no single frame
-   carries more than one heavy job:
-     fine 5: generate the next column, cache its chars and colours
-     fine 4: assembly row copy front -> back
-     fine 3: write the cached column into the back buffer
-     fine 0: flip, shift colour RAM, poke the cached colours
+/* The coarse-scroll work is spread so thinly across the fine-scroll
+   cycle that NO frame carries more than ~5k cycles of engine work:
+     fine 6:   generate the next column, cache its chars
+     fine 5-2: copy 5-6 playfield rows per frame (assembly)
+     fine 1:   write the cached column into the back buffer
+     fine 0:   flip only ($D018 request + model advance, nearly free)
+   Colour RAM is static, so the flip frame has nothing heavy to do.
    Returns 1 on the flip frame. */
-unsigned char char_cache[PF_ROWS], col_cache[PF_ROWS];
+unsigned char char_cache[PF_ROWS];
+
+void copy_row_chunk(unsigned char first, unsigned char count) {
+    unsigned int o = PF_OFFSET + first * 40;
+    scr_src = front_scr() + o + 1;
+    scr_dst = back_scr() + o;
+    scr_rows = count;
+    scroll_rows();
+}
 
 unsigned char scroll_step(void) {
-    unsigned char r, ch, co;
+    unsigned char r;
     unsigned int o;
 
-    if (fine_x == 0) {
-        fine_x = 7;
+    if (fine_pos == 0) {
+        fine_pos = 7;
         front ^= 1;
         d018_next = front ? D018_B : D018_A;
-        scr_src = COLRAM + PF_OFFSET + 1;
-        scr_dst = COLRAM + PF_OFFSET;
-        scroll_rows();
+        fine_next = 7;          /* latched together with the flip */
         head = (head + 1) & RMASK;
-        o = PF_OFFSET + 39;
-        for (r = 0; r < PF_ROWS; r++) { COLRAM[o] = col_cache[r]; o += 40; }
         return 1;
     }
-    fine_x--;
-    if (fine_x == 5) {
+    fine_pos--;
+    fine_next = fine_pos;
+    switch (fine_pos) {
+    case 6:
         gen_column((head + 40) & RMASK);
-        for (r = 0; r < PF_ROWS; r++) {
-            column_cell((head + 40) & RMASK, r, &ch, &co);
-            char_cache[r] = ch;
-            col_cache[r] = co;
-        }
-    } else if (fine_x == 4) {
-        scr_src = front_scr() + PF_OFFSET + 1;
-        scr_dst = back_scr() + PF_OFFSET;
-        scroll_rows();
-    } else if (fine_x == 3) {
+        for (r = 0; r < PF_ROWS; r++)
+            char_cache[r] = column_char((head + 40) & RMASK, r);
+        break;
+    case 5: copy_row_chunk(0, 6);  break;
+    case 4: copy_row_chunk(6, 6);  break;
+    case 3: copy_row_chunk(12, 5); break;
+    case 2: copy_row_chunk(17, 5); break;
+    case 1:
         o = PF_OFFSET + 39;
         for (r = 0; r < PF_ROWS; r++) {
             back_scr()[o] = char_cache[r];
             o += 40;
         }
+        break;
     }
     return 0;
 }
@@ -457,8 +484,8 @@ void full_redraw(void) {
         idx = (head + c) & RMASK;
         write_column_chars(SCREEN_A, c, idx);
         write_column_chars(SCREEN_B, c, idx);
-        write_column_colors(c, idx);
     }
+    init_colors();
 }
 
 /* ================= HUD ================= */
@@ -500,6 +527,28 @@ unsigned char terrain_hit(unsigned int x, unsigned char y) {
     if (r >= fl_top) return 1;
     if (tow_h[idx] && r >= fl_top - tow_h[idx]) return 1;
     return 0;
+}
+
+/* ================= Agent telemetry ================= */
+
+void write_telemetry(void) {
+    unsigned char idx = (head + (ship_x - 20) / 8) & RMASK;
+    unsigned char best = 0xFF, ey = 0xFF, i;
+    unsigned int d;
+
+    POKE(AGENT_TELE + 0, ship_y);
+    POKE(AGENT_TELE + 1, 74 + (ceil_h[idx] << 3));
+    POKE(AGENT_TELE + 2,
+         74 + ((PF_ROWS - floor_h[idx] - tow_h[idx]) << 3));
+    for (i = 0; i < MAX_EN; i++) {
+        if (en[i].active && en[i].x > ship_x) {
+            d = (en[i].x - ship_x) >> 1;
+            if (d < best) { best = (unsigned char)d; ey = en[i].y; }
+        }
+    }
+    POKE(AGENT_TELE + 3, ey);
+    POKE(AGENT_TELE + 4, best);
+    POKE(AGENT_TELE + 5, ST_PLAY);
 }
 
 /* ================= Entities ================= */
@@ -604,6 +653,7 @@ unsigned char wait_frames(void) {
     while (!vsync_flag) ;
     n = vsync_flag;
     vsync_flag = 0;
+    if (n > 1) POKE(MISS_COUNTER, PEEK(MISS_COUNTER) + n - 1);
     return n > 3 ? 3 : n;
 }
 
@@ -736,6 +786,8 @@ void play(void) {
         if (score >= 1500 && speed_lvl < 2) { speed_lvl = 2; hud_dirty = 1; }
         if (score >= 3000 && speed_lvl < 3) { speed_lvl = 3; hud_dirty = 1; }
 
+        write_telemetry();
+
         if (hud_dirty) { update_hud(); hud_dirty = 0; }
     }
 
@@ -756,11 +808,16 @@ void stamp_title(unsigned char *scr, unsigned char blink) {
     put_text(scr, 6,  17, "(C) 2026 AI TOOLCHAIN FABLE");
 }
 
+/* Title and game over are STATIC screens: text inside the fine-scroll
+   zone would wobble with the terrain, so the scroll engine idles here
+   and ignition happens when the game starts */
 void title_screen(void) {
     unsigned int timer = 0;
-    unsigned char joy, n;
+    unsigned char joy;
 
     VIC_SPR_ENA = 0x00;
+    POKE(AGENT_TELE + 5, ST_TITLE);
+    POKE(AGENT_HOLD, 0);
     draw_hud_static();
     update_hud();
     stamp_title(SCREEN_A, 1);
@@ -768,15 +825,14 @@ void title_screen(void) {
     panel_colors();
 
     while (1) {
-        n = wait_frames();
-        while (n--) {
-            frame++;
-            music_tick();
-            if (scroll_step()) panel_colors();
-            if (fine_x == 3)
-                stamp_title(back_scr(), (timer & 0x20) ? 1 : 0);
-        }
+        wait_frames();
+        frame++;
+        music_tick();
         timer++;
+        if ((timer & 0x1F) == 0) {
+            if (timer & 0x20) put_text2(10, 15, "PRESS FIRE TO START");
+            else              put_text2(10, 15, "                   ");
+        }
         joy = read_input();
         if (JOY_BTN_1(joy)) { demo_mode = 0; break; }
         if (timer > 700) { demo_mode = 1; break; }
@@ -801,23 +857,23 @@ void stamp_gameover(unsigned char *scr, unsigned char blink) {
 
 void game_over_screen(void) {
     unsigned int timer = 0;
-    unsigned char n;
 
     VIC_SPR_ENA = 0x00;
+    POKE(AGENT_TELE + 5, ST_OVER);
+    POKE(AGENT_HOLD, 0);
     stamp_gameover(SCREEN_A, 1);
     stamp_gameover(SCREEN_B, 1);
     panel_colors();
 
     while (1) {
-        n = wait_frames();
-        while (n--) {
-            frame++;
-            music_tick();
-            if (scroll_step()) panel_colors();
-            if (fine_x == 3)
-                stamp_gameover(back_scr(), (timer & 0x20) ? 1 : 0);
-        }
+        wait_frames();
+        frame++;
+        music_tick();
         timer++;
+        if ((timer & 0x1F) == 0) {
+            if (timer & 0x20) put_text2(9, 15, "PRESS FIRE TO CONTINUE");
+            else              put_text2(9, 15, "                      ");
+        }
         if (JOY_BTN_1(read_input())) break;
         if (timer > 800) break;
     }
@@ -827,6 +883,7 @@ int main(void) {
     srand(0xC64);
     joy_install(joy_static_stddrv);
     POKE(AGENT_INPUT, 0);
+    POKE(AGENT_HOLD, 0);
 
     install_video();
     music_init();

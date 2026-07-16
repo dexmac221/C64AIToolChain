@@ -103,27 +103,27 @@ TILES = [
         "....",
         "....",
     ]),
-    # 7: STAR1 - hires sparkle
-    ("STAR1", "hi", [
-        "        ",
-        "   #    ",
-        "  ###   ",
-        "   #    ",
-        "        ",
-        "        ",
-        "        ",
-        "        ",
+    # 7: STAR1 - multicolor sparkle (shared bright colour, static colram)
+    ("STAR1", "mc", [
+        "    ",
+        " +  ",
+        "+++ ",
+        " +  ",
+        "    ",
+        "    ",
+        "    ",
+        "    ",
     ]),
-    # 8: STAR2 - hires dot
-    ("STAR2", "hi", [
-        "        ",
-        "        ",
-        "        ",
-        "        ",
-        "     #  ",
-        "        ",
-        "        ",
-        "        ",
+    # 8: STAR2 - multicolor dot
+    ("STAR2", "mc", [
+        "    ",
+        "    ",
+        "    ",
+        "    ",
+        "  + ",
+        "    ",
+        "    ",
+        "    ",
     ]),
     # 9: HUDLINE - hires separator bar
     ("HUDLINE", "hi", [

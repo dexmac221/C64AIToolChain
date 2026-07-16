@@ -10,15 +10,15 @@
 ;   void scroll_rows(void);
 
 .export _scroll_rows
-.export _scr_src, _scr_dst
+.export _scr_src, _scr_dst, _scr_rows
 .importzp ptr1, ptr2
 
-ROWS = 22
 COLS = 39
 
 .data
-_scr_src: .word 0
-_scr_dst: .word 0
+_scr_src:  .word 0
+_scr_dst:  .word 0
+_scr_rows: .byte 22
 
 .code
 
@@ -31,7 +31,7 @@ _scroll_rows:
         sta ptr2
         lda _scr_dst+1
         sta ptr2+1
-        ldx #ROWS
+        ldx _scr_rows
 row_loop:
         ldy #0
 col_loop:
