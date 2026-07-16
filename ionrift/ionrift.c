@@ -403,9 +403,20 @@ void init_terrain(void) {
 unsigned char *front_scr(void) { return front ? SCREEN_B : SCREEN_A; }
 unsigned char *back_scr(void)  { return front ? SCREEN_A : SCREEN_B; }
 
-void scroll_step(void) {
+/* Work is spread over the fine-scroll cycle so no single frame
+   carries more than one heavy job:
+     fine 5: generate the next column, cache its chars and colours
+     fine 4: assembly row copy front -> back
+     fine 3: write the cached column into the back buffer
+     fine 0: flip, shift colour RAM, poke the cached colours
+   Returns 1 on the flip frame. */
+unsigned char char_cache[PF_ROWS], col_cache[PF_ROWS];
+
+unsigned char scroll_step(void) {
+    unsigned char r, ch, co;
+    unsigned int o;
+
     if (fine_x == 0) {
-        /* wrap: flip buffers, shift colour RAM, advance the model */
         fine_x = 7;
         front ^= 1;
         d018_next = front ? D018_B : D018_A;
@@ -413,18 +424,40 @@ void scroll_step(void) {
         scr_dst = COLRAM + PF_OFFSET;
         scroll_rows();
         head = (head + 1) & RMASK;
-        write_column_colors(39, (head + 39) & RMASK);
-        hud_dirty = 1;
-    } else {
-        fine_x--;
-        if (fine_x == 4) {
-            /* mid-cycle: prepare the back buffer one char ahead */
-            gen_column((head + 40) & RMASK);
-            scr_src = front_scr() + PF_OFFSET + 1;
-            scr_dst = back_scr() + PF_OFFSET;
-            scroll_rows();
-            write_column_chars(back_scr(), 39, (head + 40) & RMASK);
+        o = PF_OFFSET + 39;
+        for (r = 0; r < PF_ROWS; r++) { COLRAM[o] = col_cache[r]; o += 40; }
+        return 1;
+    }
+    fine_x--;
+    if (fine_x == 5) {
+        gen_column((head + 40) & RMASK);
+        for (r = 0; r < PF_ROWS; r++) {
+            column_cell((head + 40) & RMASK, r, &ch, &co);
+            char_cache[r] = ch;
+            col_cache[r] = co;
         }
+    } else if (fine_x == 4) {
+        scr_src = front_scr() + PF_OFFSET + 1;
+        scr_dst = back_scr() + PF_OFFSET;
+        scroll_rows();
+    } else if (fine_x == 3) {
+        o = PF_OFFSET + 39;
+        for (r = 0; r < PF_ROWS; r++) {
+            back_scr()[o] = char_cache[r];
+            o += 40;
+        }
+    }
+    return 0;
+}
+
+/* Full model-driven repaint of both buffers (mode transitions) */
+void full_redraw(void) {
+    unsigned char c, idx;
+    for (c = 0; c < 40; c++) {
+        idx = (head + c) & RMASK;
+        write_column_chars(SCREEN_A, c, idx);
+        write_column_chars(SCREEN_B, c, idx);
+        write_column_colors(c, idx);
     }
 }
 
@@ -563,9 +596,26 @@ void update_enemies(void) {
 
 /* ================= Game loop ================= */
 
-void wait_frame(void) {
+/* Frames elapsed since last call; if a frame overran, the caller
+   catches up by running the scroll that many times (2px step beats
+   a visible stall) */
+unsigned char wait_frames(void) {
+    unsigned char n;
     while (!vsync_flag) ;
+    n = vsync_flag;
     vsync_flag = 0;
+    return n > 3 ? 3 : n;
+}
+
+/* --- Solid text panel over the scrolling terrain (no ghosting):
+   the whole band is repainted every coarse-scroll cycle --- */
+#define PANEL_TOP 7
+#define PANEL_BOT 18             /* exclusive */
+
+void panel_colors(void) {
+    unsigned char r;
+    for (r = PANEL_TOP; r < PANEL_BOT; r++)
+        memset(COLRAM + r * 40, 1, 40);
 }
 
 void reset_game(void) {
@@ -590,16 +640,21 @@ void play(void) {
     unsigned int demo_timer = 0;
 
     reset_game();
+    full_redraw();               /* wipe the title panel, restore colours */
     draw_hud_static();
     update_hud();
     VIC_SPR_ENA = 0xFF;
     set_sprite_frame(0, SF_SHIP0);
 
     while (!game_over_flag) {
-        wait_frame();
-        frame++;
-        music_tick();
-        scroll_step();
+        {
+            unsigned char n = wait_frames();
+            while (n--) {
+                frame++;
+                music_tick();
+                scroll_step();
+            }
+        }
 
         if (invuln) {
             invuln--;
@@ -689,31 +744,38 @@ void play(void) {
 
 /* ================= Screens ================= */
 
+void stamp_title(unsigned char *scr, unsigned char blink) {
+    unsigned char r;
+    for (r = PANEL_TOP; r < PANEL_BOT; r++)
+        memset(scr + r * 40, 32, 40);
+    put_text(scr, 9,  8,  "*  I O N   R I F T  *");
+    put_text(scr, 7,  11, "SMOOTH SCROLL + RASTER IRQ");
+    put_text(scr, 7,  12, "DOUBLE BUFFER + SID MUSIC");
+    if (blink)
+        put_text(scr, 10, 15, "PRESS FIRE TO START");
+    put_text(scr, 6,  17, "(C) 2026 AI TOOLCHAIN FABLE");
+}
+
 void title_screen(void) {
     unsigned int timer = 0;
-    unsigned char joy;
+    unsigned char joy, n;
 
     VIC_SPR_ENA = 0x00;
     draw_hud_static();
     update_hud();
+    stamp_title(SCREEN_A, 1);
+    stamp_title(SCREEN_B, 1);
+    panel_colors();
 
     while (1) {
-        wait_frame();
-        frame++;
-        music_tick();
-        scroll_step();
-
-        /* title text rides on top of the live scrolling terrain:
-           redraw it after every back-buffer preparation */
-        if (fine_x == 4 || fine_x == 7 || timer < 2) {
-            put_text2(11, 8,  "*  I O N   R I F T  *");
-            put_text2(9, 11, "SMOOTH SCROLL - RASTER IRQ");
-            put_text2(9, 12, "DOUBLE BUFFER - SID MUSIC");
-            if (timer & 0x20) put_text2(11, 16, "PRESS FIRE TO START");
-            else              put_text2(11, 16, "                   ");
-            put_text2(9, 20, "(C) 2026 AI TOOLCHAIN FABLE");
+        n = wait_frames();
+        while (n--) {
+            frame++;
+            music_tick();
+            if (scroll_step()) panel_colors();
+            if (fine_x == 3)
+                stamp_title(back_scr(), (timer & 0x20) ? 1 : 0);
         }
-
         timer++;
         joy = read_input();
         if (JOY_BTN_1(joy)) { demo_mode = 0; break; }
@@ -721,20 +783,39 @@ void title_screen(void) {
     }
 }
 
+void stamp_gameover(unsigned char *scr, unsigned char blink) {
+    unsigned char r;
+    char buf[6];
+    signed char i;
+    unsigned int v = score;
+    for (r = PANEL_TOP; r < PANEL_BOT; r++)
+        memset(scr + r * 40, 32, 40);
+    put_text(scr, 11, 9, "G A M E   O V E R");
+    for (i = 4; i >= 0; i--) { buf[i] = '0' + (v % 10); v /= 10; }
+    buf[5] = 0;
+    put_text(scr, 12, 12, "SCORE");
+    put_text(scr, 18, 12, buf);
+    if (blink)
+        put_text(scr, 9, 15, "PRESS FIRE TO CONTINUE");
+}
+
 void game_over_screen(void) {
     unsigned int timer = 0;
+    unsigned char n;
 
     VIC_SPR_ENA = 0x00;
+    stamp_gameover(SCREEN_A, 1);
+    stamp_gameover(SCREEN_B, 1);
+    panel_colors();
+
     while (1) {
-        wait_frame();
-        frame++;
-        music_tick();
-        scroll_step();
-        if (fine_x == 4 || fine_x == 7 || timer < 2) {
-            put_text2(11, 10, "G A M E   O V E R");
-            put_num2(17, 12, score, 5);
-            if (timer & 0x20) put_text2(9, 15, "PRESS FIRE TO CONTINUE");
-            else              put_text2(9, 15, "                      ");
+        n = wait_frames();
+        while (n--) {
+            frame++;
+            music_tick();
+            if (scroll_step()) panel_colors();
+            if (fine_x == 3)
+                stamp_gameover(back_scr(), (timer & 0x20) ? 1 : 0);
         }
         timer++;
         if (JOY_BTN_1(read_input())) break;
