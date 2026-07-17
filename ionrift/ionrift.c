@@ -285,7 +285,7 @@ void install_video(void) {
 
     /* Sprites: all multicolor */
     VIC_SPR_MC = 0xFF;
-    VIC_SPR_MC0 = 9;             /* shared: brown/orange glow */
+    VIC_SPR_MC0 = 8;             /* shared: orange glow */
     VIC_SPR_MC1 = 1;             /* shared: white             */
     VIC_SPR_COL(0) = 3;          /* ship cyan     */
     VIC_SPR_COL(1) = 1;          /* bolt white    */
@@ -709,6 +709,7 @@ void play(void) {
         if (invuln) {
             invuln--;
             VIC_SPR_ENA = (invuln & 2) ? 0xFE : 0xFF;
+            if (invuln == 52) VIC_BORDER = 0;   /* short damage flash */
             if (!invuln) { VIC_BORDER = 0; VIC_SPR_ENA = 0xFF; }
         }
 
@@ -816,6 +817,7 @@ void title_screen(void) {
     unsigned char joy;
 
     VIC_SPR_ENA = 0x00;
+    VIC_BORDER = 0;
     POKE(AGENT_TELE + 5, ST_TITLE);
     POKE(AGENT_HOLD, 0);
     draw_hud_static();
@@ -859,6 +861,7 @@ void game_over_screen(void) {
     unsigned int timer = 0;
 
     VIC_SPR_ENA = 0x00;
+    VIC_BORDER = 0;              /* clear a mid-flash red border */
     POKE(AGENT_TELE + 5, ST_OVER);
     POKE(AGENT_HOLD, 0);
     stamp_gameover(SCREEN_A, 1);

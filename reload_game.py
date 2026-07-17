@@ -146,7 +146,17 @@ def reload_game(prg_path, host='localhost', port=6510, start_addr=DEFAULT_START_
     
     try:
         print(f"Loading: {prg_path}")
-        
+
+        # Disarm any custom raster IRQ before touching memory: the CPU may
+        # be paused mid-way through an IRQ vector swap ($0314/$0315), and
+        # forcing the PC with 'g' would leave a torn vector that jumps into
+        # garbage on the next interrupt. Restore the KERNAL vector and
+        # disable VIC raster IRQs; the reloaded program re-installs its own.
+        send_command(s, '> d01a 00', timeout=0.5)   # VIC IRQs off
+        send_command(s, '> d019 ff', timeout=0.5)   # ack pending
+        send_command(s, '> 0314 31', timeout=0.5)   # KERNAL IRQ vector lo
+        send_command(s, '> 0315 ea', timeout=0.5)   # KERNAL IRQ vector hi
+
         # Load program to memory (device 0 = computer memory)
         response = send_command(s, f'l "{prg_path}" 0', timeout=2.0)
         if "Error" in response or "error" in response:
