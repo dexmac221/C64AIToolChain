@@ -41,6 +41,8 @@
 #define VIC_SPR_HI_X   (*(unsigned char*)0xD010)
 #define VIC_SPR_ENA    (*(unsigned char*)0xD015)
 #define VIC_SPR_MC     (*(unsigned char*)0xD01C)
+#define VIC_SPR_DBL_X  (*(unsigned char*)0xD01D)
+#define VIC_SPR_DBL_Y  (*(unsigned char*)0xD017)
 #define VIC_SPR_MC0    (*(unsigned char*)0xD025)
 #define VIC_SPR_MC1    (*(unsigned char*)0xD026)
 #define VIC_SPR_COL(n) (*(unsigned char*)(0xD027 + (n)))
@@ -129,12 +131,27 @@ unsigned char read_input(void) {
 unsigned char ceil_h[RING];      /* ceiling thickness in rows (1..5) */
 unsigned char floor_h[RING];     /* floor thickness in rows (1..5)  */
 unsigned char tow_h[RING];       /* tower height above floor (0..8) */
-unsigned char star_r[RING];      /* star row in the sky gap, 0xFF none */
-unsigned char star_c[RING];      /* star char */
 unsigned char head = 0;          /* ring index of screen column 0 */
 
+/* --- Parallax star field ---
+   The stars are NOT part of the terrain: they live in their own model
+   and are repainted into the back buffer once per coarse-scroll cycle.
+   The row copier drags every star one char left along with the terrain,
+   so a star only has to be pushed back to its old column on the cycles
+   where it should NOT move - that is what makes it slower than the
+   foreground. Three planes at 1/2, 1/3 and 1/4 of the terrain speed.
+   Depth is cued by colour without touching the static colour RAM:
+   near stars use the '11' bit pair (colour RAM, light blue), mid stars
+   '10' ($D023 mid grey), far stars '01' ($D022 dark grey). */
+#define NUM_STARS 15
+unsigned char st_col[NUM_STARS];  /* screen column, model-tracked */
+unsigned char st_row[NUM_STARS];  /* playfield row */
+unsigned char st_ch[NUM_STARS];   /* tile, encodes the depth plane */
+unsigned char st_div[NUM_STARS];  /* cycles per character step */
+unsigned char st_cnt[NUM_STARS];
+void init_stars(void);            /* defined with the scroll engine */
+
 unsigned char cur_ceil = 2, cur_floor = 2;
-unsigned int  world_col = 0;
 
 /* --- Game state --- */
 unsigned char front = 0;         /* 0 = SCREEN_A visible */
@@ -150,6 +167,8 @@ unsigned char anim = 0;
 unsigned char spawn_timer = 90;
 unsigned char speed_lvl = 0;
 unsigned char hud_dirty = 1;
+unsigned char ship_boom = 0;     /* death blast countdown */
+unsigned char pending_over = 0;  /* game over held back until it ends */
 
 struct { unsigned int x; unsigned char y; unsigned char active; } bolt;
 struct { unsigned int x; unsigned char y; unsigned char active; } orb;
@@ -283,8 +302,10 @@ void install_video(void) {
     VIC_MC1 = 11;                /* shared '01' dark gray  */
     VIC_MC2 = 12;                /* shared '10' mid gray   */
 
-    /* Sprites: all multicolor */
+    /* Sprites: all multicolor, none expanded until a blast needs it */
     VIC_SPR_MC = 0xFF;
+    VIC_SPR_DBL_X = 0;
+    VIC_SPR_DBL_Y = 0;
     VIC_SPR_MC0 = 8;             /* shared: orange glow */
     VIC_SPR_MC1 = 1;             /* shared: white             */
     VIC_SPR_COL(0) = 3;          /* ship cyan     */
@@ -365,28 +386,24 @@ void gen_column(unsigned char idx) {
         tow_h[idx] = 2 + (rand() & 3);
         if (tow_h[idx] > gap - 6) tow_h[idx] = gap - 6;
     } else tow_h[idx] = 0;
-
-    /* sparse stars in the sky gap */
-    if ((rand() & 7) < 3) {
-        star_r[idx] = cur_ceil + 1 + (rand() % (gap - 2));
-        star_c[idx] = (rand() & 1) ? T_STAR1 : T_STAR2;
-    } else star_r[idx] = 0xFF;
-
-    world_col++;
 }
 
 /* Char for playfield row r (0..21) of ring column idx */
 unsigned char column_char(unsigned char idx, unsigned char r) {
     unsigned char fl_top = PF_ROWS - floor_h[idx];
 
-    if (r < ceil_h[idx])
-        return (r == ceil_h[idx] - 1) ? T_CEIL_BOT : T_CEIL_FILL;
-    if (r >= fl_top)
-        return (r == fl_top) ? T_FLOOR_TOP : T_FLOOR_FILL;
+    if (r < ceil_h[idx]) {
+        if (r == ceil_h[idx] - 1) return T_CEIL_BOT;
+        /* the ring index is a stable per-column identity, so this
+           greeble stays put on its column while the deck scrolls */
+        return ((idx & 3) == 2 && r == 0) ? T_GREEBLE : T_CEIL_FILL;
+    }
+    if (r >= fl_top) {
+        if (r == fl_top) return T_FLOOR_TOP;
+        return ((idx & 3) == 1 && r == fl_top + 1) ? T_GREEBLE : T_FLOOR_FILL;
+    }
     if (tow_h[idx] && r >= fl_top - tow_h[idx])
         return (r == fl_top - tow_h[idx]) ? T_TOWER_TOP : T_TOWER;
-    if (r == star_r[idx])
-        return star_c[idx];
     return 32;
 }
 
@@ -417,12 +434,52 @@ void init_terrain(void) {
         write_column_chars(SCREEN_B, c, c);
     }
     init_colors();
+    init_stars();
 }
 
 /* ================= Scroll engine ================= */
 
 unsigned char *front_scr(void) { return front ? SCREEN_B : SCREEN_A; }
 unsigned char *back_scr(void)  { return front ? SCREEN_A : SCREEN_B; }
+
+void init_stars(void) {
+    unsigned char i, d;
+    for (i = 0; i < NUM_STARS; i++) {
+        d = i % 3;                       /* three depth planes */
+        st_col[i] = rand() % 39;
+        st_row[i] = 1 + (rand() % (PF_ROWS - 2));
+        st_div[i] = d + 2;               /* 1/2, 1/3, 1/4 of terrain speed */
+        st_ch[i] = (d == 0) ? T_STAR_NEAR :
+                   (d == 1) ? T_STAR_MID : T_STAR_FAR;
+        st_cnt[i] = rand() & 3;
+    }
+}
+
+/* Repaint the star layer into the back buffer. Runs once per coarse
+   cycle, right after the new terrain column is written, using the ring
+   index the buffer will be displayed with (head has not advanced yet).
+   A star is drawn only where the terrain model says the sky is empty,
+   so the foreground occludes the background for free. */
+void update_stars(void) {
+    unsigned char i, oldc, r;
+    unsigned char nh = (head + 1) & RMASK;
+    unsigned char *scr = back_scr() + PF_OFFSET;
+
+    for (i = 0; i < NUM_STARS; i++) {
+        r = st_row[i];
+        if (st_col[i] == 0) {
+            /* dragged off the left edge: respawn on the right */
+            st_col[i] = 39;
+            r = st_row[i] = 1 + (rand() % (PF_ROWS - 2));
+        } else {
+            oldc = st_col[i] - 1;        /* where the row copier left it */
+            scr[r * 40 + oldc] = column_char((nh + oldc) & RMASK, r);
+            if (++st_cnt[i] >= st_div[i]) { st_cnt[i] = 0; st_col[i] = oldc; }
+        }
+        if (column_char((nh + st_col[i]) & RMASK, r) == 32)
+            scr[r * 40 + st_col[i]] = st_ch[i];
+    }
+}
 
 /* The coarse-scroll work is spread so thinly across the fine-scroll
    cycle that NO frame carries more than ~5k cycles of engine work:
@@ -472,6 +529,7 @@ unsigned char scroll_step(void) {
             back_scr()[o] = char_cache[r];
             o += 40;
         }
+        update_stars();          /* after the column write, never before */
         break;
     }
     return 0;
@@ -486,6 +544,7 @@ void full_redraw(void) {
         write_column_chars(SCREEN_B, c, idx);
     }
     init_colors();
+    init_stars();
 }
 
 /* ================= HUD ================= */
@@ -553,9 +612,47 @@ void write_telemetry(void) {
 
 /* ================= Entities ================= */
 
+/* --- Explosion playback, shared by enemies and the ship ---
+   Four phases over 20 frames: white flash, expanded fireball,
+   breaking ring, cooling debris. The per-sprite colour cycles
+   white -> yellow -> orange -> red while the shared registers keep
+   the orange glow and white hot-spots, and the VIC doubles the
+   sprite during the fireball so the blast dwarfs what it came from. */
+#define BOOM_FRAMES 20
+
+void draw_boom(unsigned char spr, unsigned char d,
+               unsigned int x, unsigned char y) {
+    unsigned char m = 1 << spr;
+    if (d > 14) {
+        set_sprite_frame(spr, SF_EXPL0);
+        VIC_SPR_COL(spr) = 1;                    /* white flash */
+    } else if (d > 9) {
+        set_sprite_frame(spr, SF_EXPL1);
+        VIC_SPR_COL(spr) = 7;                    /* yellow fireball */
+    } else if (d > 4) {
+        set_sprite_frame(spr, SF_EXPL2);
+        VIC_SPR_COL(spr) = 8;                    /* orange ring */
+    } else {
+        set_sprite_frame(spr, SF_EXPL3);
+        VIC_SPR_COL(spr) = 2;                    /* red embers */
+    }
+    if (d > 9 && d <= 14) {                      /* fireball: double size */
+        VIC_SPR_DBL_X |= m;
+        VIC_SPR_DBL_Y |= m;
+        set_sprite_pos(spr, x > 36 ? x - 12 : x, y > 60 ? y - 10 : y);
+    } else {
+        VIC_SPR_DBL_X &= ~m;
+        VIC_SPR_DBL_Y &= ~m;
+        set_sprite_pos(spr, x, y);
+    }
+}
+
 void hide_enemy(unsigned char i) {
+    unsigned char m = 1 << (3 + i);
     en[i].active = 0;
     en[i].dying = 0;
+    VIC_SPR_DBL_X &= ~m;
+    VIC_SPR_DBL_Y &= ~m;
     set_sprite_pos(3 + i, 0, 0);
 }
 
@@ -577,9 +674,7 @@ void spawn_enemy(void) {
 
 void kill_enemy(unsigned char i) {
     en[i].active = 0;
-    en[i].dying = 16;
-    set_sprite_frame(3 + i, SF_EXPL0);
-    VIC_SPR_COL(3 + i) = 7;
+    en[i].dying = BOOM_FRAMES;
     score += en[i].type ? 50 : 25;
     hud_dirty = 1;
     sfx_boom();
@@ -592,9 +687,8 @@ void ship_hit(void) {
     shields--;
     hud_dirty = 1;
     invuln = 60;
-    if (shields == 0) game_over_flag = 1;
-    ship_y = 140;
-    ship_x = 60;
+    ship_boom = BOOM_FRAMES;     /* blast plays where the ship died */
+    if (shields == 0) pending_over = 1;
 }
 
 void update_enemies(void) {
@@ -602,8 +696,11 @@ void update_enemies(void) {
     for (i = 0; i < MAX_EN; i++) {
         if (en[i].dying) {
             en[i].dying--;
-            set_sprite_frame(3 + i, (en[i].dying & 4) ? SF_EXPL0 : SF_EXPL1);
-            if (!en[i].dying) hide_enemy(i);
+            draw_boom(3 + i, en[i].dying, en[i].x, en[i].y);
+            if (!en[i].dying) {
+                hide_enemy(i);
+                VIC_SPR_COL(3 + i) = 4;
+            }
             continue;
         }
         if (!en[i].active) continue;
@@ -676,10 +773,15 @@ void reset_game(void) {
     ship_x = 60;
     ship_y = 140;
     game_over_flag = 0;
+    pending_over = 0;
+    ship_boom = 0;
     spawn_timer = 90;
     speed_lvl = 0;
     bolt.active = 0;
     orb.active = 0;
+    VIC_SPR_DBL_X = 0;
+    VIC_SPR_DBL_Y = 0;
+    VIC_SPR_COL(0) = 3;
     for (i = 0; i < MAX_EN; i++) hide_enemy(i);
     set_sprite_pos(1, 0, 0);
     set_sprite_pos(2, 0, 0);
@@ -708,7 +810,8 @@ void play(void) {
 
         if (invuln) {
             invuln--;
-            VIC_SPR_ENA = (invuln & 2) ? 0xFE : 0xFF;
+            /* the respawn blink must never hide the death blast */
+            VIC_SPR_ENA = (!ship_boom && (invuln & 2)) ? 0xFE : 0xFF;
             if (invuln == 52) VIC_BORDER = 0;   /* short damage flash */
             if (!invuln) { VIC_BORDER = 0; VIC_SPR_ENA = 0xFF; }
         }
@@ -716,7 +819,9 @@ void play(void) {
         joy = read_input();
         if (demo_mode && joy) { demo_mode = 0; }
 
-        if (demo_mode) {
+        if (ship_boom) {
+            /* controls are dead while the wreck burns */
+        } else if (demo_mode) {
             /* autopilot: stay mid-gap, dodge, shoot */
             unsigned char idx = (head + (ship_x - 20) / 8) & RMASK;
             unsigned char target =
@@ -733,19 +838,29 @@ void play(void) {
             if (JOY_RIGHT(joy) && ship_x < 300) ship_x += 2;
         }
 
-        if (JOY_BTN_1(joy) && !bolt.active) {
+        if (JOY_BTN_1(joy) && !bolt.active && !ship_boom) {
             bolt.active = 1;
             bolt.x = ship_x + 18;
             bolt.y = ship_y + 6;
             sfx_shoot();
         }
 
-        /* ship */
-        set_sprite_frame(0, (frame & 4) ? SF_SHIP0 : SF_SHIP1);
-        set_sprite_pos(0, ship_x, ship_y);
-        if (!invuln && terrain_hit(ship_x + 10, ship_y + 10)) {
-            sfx_boom();
-            ship_hit();
+        /* ship, or what is left of it */
+        if (ship_boom) {
+            ship_boom--;
+            draw_boom(0, ship_boom, ship_x, ship_y);
+            if (!ship_boom) {
+                VIC_SPR_COL(0) = 3;
+                if (pending_over) game_over_flag = 1;
+                else { ship_x = 60; ship_y = 140; }
+            }
+        } else {
+            set_sprite_frame(0, (frame & 4) ? SF_SHIP0 : SF_SHIP1);
+            set_sprite_pos(0, ship_x, ship_y);
+            if (!invuln && terrain_hit(ship_x + 10, ship_y + 10)) {
+                sfx_boom();
+                ship_hit();
+            }
         }
 
         /* bolt */
