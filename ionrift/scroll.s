@@ -35,9 +35,13 @@ _scroll_rows:
 row_loop:
         ldy #0
 col_loop:
+        ; unrolled thirteen deep: the loop test used to cost as much as
+        ; the copy itself (5+6+2 useful cycles against 2+3 of overhead)
+        .repeat 13
         lda (ptr1),y
         sta (ptr2),y
         iny
+        .endrepeat
         cpy #COLS
         bne col_loop
         ; advance both pointers by 40

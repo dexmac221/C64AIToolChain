@@ -173,14 +173,32 @@ unsigned char pending_over = 0;  /* game over held back until it ends */
 struct { unsigned int x; unsigned char y; unsigned char active; } bolt;
 struct { unsigned int x; unsigned char y; unsigned char active; } orb;
 
-#define MAX_EN 5                 /* sprites 3..7 */
-struct {
-    unsigned int x;
-    unsigned char y, base_y;
-    unsigned char type;          /* 0 drone (sine), 1 dart (fast) */
-    unsigned char active;
-    unsigned char dying;         /* explosion timer */
-} en[MAX_EN];
+/* Hardware sprites 3..7 are recycled by the raster multiplexer in
+   irq.s, so the model holds far more enemies than the VIC has sprites.
+   Each entry carries its own frame and colour: nothing here touches
+   the VIC directly any more, build_mux() hands the sorted list over. */
+#define MAX_EN 12
+#define MUX_SLOTS 5              /* hardware sprites 3..7 */
+
+/* Structure of ARRAYS, not an array of structures: cc65 indexes a
+   struct array with a multiply by the struct size, and these loops run
+   twelve times every frame inside the multiplexer sort. X is kept in
+   2-pixel units so that every comparison stays 8-bit as well - the
+   16-bit arithmetic cc65 emits for an unsigned int is what made the
+   first version eat half the frame. */
+unsigned char en_x[MAX_EN];      /* 2-pixel units: 0..200 */
+unsigned char en_y[MAX_EN];
+unsigned char en_base[MAX_EN];
+unsigned char en_type[MAX_EN];   /* 0 drone (sine), 1 dart (fast) */
+unsigned char en_act[MAX_EN];
+unsigned char en_die[MAX_EN];    /* explosion countdown */
+unsigned char en_frm[MAX_EN];
+unsigned char en_col[MAX_EN];
+
+/* Tables consumed by the multiplexer IRQ (defined in irq.s) */
+extern unsigned char mux_y[], mux_xlo[], mux_slot[], mux_slot2[];
+extern unsigned char mux_ptr[], mux_col[], mux_xand[], mux_xor[];
+extern unsigned char mux_count;
 
 const unsigned char sine[32] = {
     0, 2, 5, 8, 11, 13, 15, 16, 16, 15, 13, 11, 8, 5, 2, 0,
@@ -592,17 +610,16 @@ unsigned char terrain_hit(unsigned int x, unsigned char y) {
 
 void write_telemetry(void) {
     unsigned char idx = (head + (ship_x - 20) / 8) & RMASK;
+    unsigned char su = (unsigned char)(ship_x >> 1);
     unsigned char best = 0xFF, ey = 0xFF, i;
-    unsigned int d;
 
     POKE(AGENT_TELE + 0, ship_y);
     POKE(AGENT_TELE + 1, 74 + (ceil_h[idx] << 3));
     POKE(AGENT_TELE + 2,
          74 + ((PF_ROWS - floor_h[idx] - tow_h[idx]) << 3));
     for (i = 0; i < MAX_EN; i++) {
-        if (en[i].active && en[i].x > ship_x) {
-            d = (en[i].x - ship_x) >> 1;
-            if (d < best) { best = (unsigned char)d; ey = en[i].y; }
+        if (en_act[i] && en_x[i] > su) {
+            if (en_x[i] - su < best) { best = en_x[i] - su; ey = en_y[i]; }
         }
     }
     POKE(AGENT_TELE + 3, ey);
@@ -620,62 +637,129 @@ void write_telemetry(void) {
    sprite during the fireball so the blast dwarfs what it came from. */
 #define BOOM_FRAMES 20
 
-void draw_boom(unsigned char spr, unsigned char d,
-               unsigned int x, unsigned char y) {
-    unsigned char m = 1 << spr;
-    if (d > 14) {
-        set_sprite_frame(spr, SF_EXPL0);
-        VIC_SPR_COL(spr) = 1;                    /* white flash */
-    } else if (d > 9) {
-        set_sprite_frame(spr, SF_EXPL1);
-        VIC_SPR_COL(spr) = 7;                    /* yellow fireball */
-    } else if (d > 4) {
-        set_sprite_frame(spr, SF_EXPL2);
-        VIC_SPR_COL(spr) = 8;                    /* orange ring */
+unsigned char boom_frame(unsigned char d) {
+    if (d > 14) return SF_EXPL0;         /* white flash      */
+    if (d > 9)  return SF_EXPL1;         /* fireball         */
+    if (d > 4)  return SF_EXPL2;         /* breaking ring    */
+    return SF_EXPL3;                     /* cooling debris   */
+}
+
+unsigned char boom_color(unsigned char d) {
+    if (d > 14) return 1;
+    if (d > 9)  return 7;
+    if (d > 4)  return 8;
+    return 2;
+}
+
+/* Only the ship gets hardware expansion: $D017/$D01D are per hardware
+   sprite, and a multiplexed slot would drag the stretch onto whatever
+   enemy recycles it further down the screen. */
+void draw_ship_boom(unsigned char d) {
+    set_sprite_frame(0, boom_frame(d));
+    VIC_SPR_COL(0) = boom_color(d);
+    if (d > 9 && d <= 14) {
+        VIC_SPR_DBL_X |= 1;
+        VIC_SPR_DBL_Y |= 1;
+        set_sprite_pos(0, ship_x > 36 ? ship_x - 12 : ship_x,
+                          ship_y > 60 ? ship_y - 10 : ship_y);
     } else {
-        set_sprite_frame(spr, SF_EXPL3);
-        VIC_SPR_COL(spr) = 2;                    /* red embers */
+        VIC_SPR_DBL_X &= ~1;
+        VIC_SPR_DBL_Y &= ~1;
+        set_sprite_pos(0, ship_x, ship_y);
     }
-    if (d > 9 && d <= 14) {                      /* fireball: double size */
-        VIC_SPR_DBL_X |= m;
-        VIC_SPR_DBL_Y |= m;
-        set_sprite_pos(spr, x > 36 ? x - 12 : x, y > 60 ? y - 10 : y);
-    } else {
-        VIC_SPR_DBL_X &= ~m;
-        VIC_SPR_DBL_Y &= ~m;
-        set_sprite_pos(spr, x, y);
+}
+
+/* Sort the live enemies by Y and pack them into the multiplexer tables.
+   An entry is dropped when it would recycle a hardware slot before the
+   raster cleared the previous occupant - graceful degradation instead
+   of a torn sprite. */
+void build_mux(void) {
+    unsigned char n = 0, i, j, k, t, y, u, slot, mask;
+    unsigned char ord[MAX_EN], ys[MAX_EN];
+
+    for (i = 0; i < MAX_EN; i++) {
+        if (en_act[i] | en_die[i]) {
+            y = en_y[i];
+            if (y >= 240) continue;      /* off screen, and $FF is the marker */
+            ord[n] = i; ys[n] = y; n++;
+        }
     }
+    for (i = 1; i < n; i++) {            /* insertion sort, ascending Y */
+        y = ys[i]; t = ord[i]; j = i;
+        while (j && ys[j - 1] > y) {
+            ys[j] = ys[j - 1]; ord[j] = ord[j - 1]; j--;
+        }
+        ys[j] = y; ord[j] = t;
+    }
+    k = 0; slot = 3;
+    for (i = 0; i < n; i++) {
+        if (k >= MUX_SLOTS && ys[i] < mux_y[k - MUX_SLOTS] + 22) continue;
+        t = ord[i];
+        mask = 1 << slot;
+        u = en_x[t];
+        mux_y[k] = ys[i];
+        if (u >= 128) { mux_xlo[k] = (u - 128) << 1; mux_xor[k] = mask; }
+        else          { mux_xlo[k] = u << 1;         mux_xor[k] = 0;    }
+        mux_slot[k] = slot;
+        mux_slot2[k] = slot << 1;
+        mux_ptr[k] = SPR_PTR_BASE + en_frm[t];
+        mux_col[k] = en_col[t];
+        mux_xand[k] = ~mask;
+        k++;
+        if (++slot > 7) slot = 3;
+    }
+    mux_y[k] = 0xFF;                     /* terminator for the IRQ */
+    mux_count = k;
 }
 
 void hide_enemy(unsigned char i) {
-    unsigned char m = 1 << (3 + i);
-    en[i].active = 0;
-    en[i].dying = 0;
-    VIC_SPR_DBL_X &= ~m;
-    VIC_SPR_DBL_Y &= ~m;
-    set_sprite_pos(3 + i, 0, 0);
+    en_act[i] = 0;
+    en_die[i] = 0;
+    en_y[i] = 0xFF;              /* parked: build_mux skips it */
 }
 
-void spawn_enemy(void) {
+void spawn_one(unsigned char type, unsigned char xu, unsigned char y) {
     unsigned char i;
     for (i = 0; i < MAX_EN; i++) {
-        if (!en[i].active && !en[i].dying) {
-            en[i].active = 1;
-            en[i].type = (rand() & 3) == 0 ? 1 : 0;
-            en[i].x = 344;
-            en[i].base_y = 90 + (rand() % 110);
-            en[i].y = en[i].base_y;
-            set_sprite_frame(3 + i, en[i].type ? SF_DART : SF_DRONE0);
-            VIC_SPR_COL(3 + i) = en[i].type ? 7 : 4;
-            break;
+        if (!en_act[i] && !en_die[i]) {
+            /* keep the sine bob inside the playfield: a Y reaching $FF
+               would read as the multiplexer's end-of-list marker */
+            if (y < 96)  y = 96;
+            if (y > 200) y = 200;
+            en_act[i] = 1;
+            en_type[i] = type;
+            en_x[i] = xu;
+            en_base[i] = y;
+            en_y[i] = y;
+            en_frm[i] = type ? SF_DART : SF_DRONE0;
+            en_col[i] = type ? 7 : 4;
+            return;
+        }
+    }
+}
+
+/* A wave is what the multiplexer buys: formations instead of singles */
+void spawn_wave(void) {
+    unsigned char n = 4 + (rand() & 3);          /* 4..7 craft */
+    unsigned char shape = rand() & 3;
+    unsigned char base = 104 + (rand() % 60);
+    unsigned char k, xu;
+
+    for (k = 0; k < n; k++) {
+        xu = 172 + k * 9;                        /* 2-pixel units */
+        switch (shape) {
+        case 0:  spawn_one(0, xu, base + k * 12); break;   /* descending */
+        case 1:  spawn_one(0, xu, base + (n - k) * 12); break; /* climbing */
+        case 2:  spawn_one(0, xu, base); break;            /* line abreast */
+        default: spawn_one(k < 2 ? 1 : 0, xu, base + k * 14); break;
         }
     }
 }
 
 void kill_enemy(unsigned char i) {
-    en[i].active = 0;
-    en[i].dying = BOOM_FRAMES;
-    score += en[i].type ? 50 : 25;
+    en_act[i] = 0;
+    en_die[i] = BOOM_FRAMES;
+    score += en_type[i] ? 50 : 25;
     hud_dirty = 1;
     sfx_boom();
 }
@@ -692,38 +776,42 @@ void ship_hit(void) {
 }
 
 void update_enemies(void) {
-    unsigned char i, sy;
+    unsigned char i, ex, ey, d;
+    unsigned char su = (unsigned char)(ship_x >> 1);   /* ship in units */
+    unsigned char bu = (unsigned char)(bolt.x >> 1);
+
     for (i = 0; i < MAX_EN; i++) {
-        if (en[i].dying) {
-            en[i].dying--;
-            draw_boom(3 + i, en[i].dying, en[i].x, en[i].y);
-            if (!en[i].dying) {
-                hide_enemy(i);
-                VIC_SPR_COL(3 + i) = 4;
-            }
+        if (en_die[i]) {
+            d = --en_die[i];
+            en_frm[i] = boom_frame(d);
+            en_col[i] = boom_color(d);
+            if (!d) hide_enemy(i);
             continue;
         }
-        if (!en[i].active) continue;
-        en[i].x -= en[i].type ? 4 : 2;
-        if (en[i].x < 12 || en[i].x > 400) { hide_enemy(i); continue; }
-        if (en[i].type == 0) {
-            sy = en[i].base_y + (signed char)sine[((frame >> 2) + (i << 2)) & 31];
-            en[i].y = sy;
-            set_sprite_frame(3 + i, (frame & 8) ? SF_DRONE0 : SF_DRONE1);
-        }
-        set_sprite_pos(3 + i, en[i].x, en[i].y);
+        if (!en_act[i]) continue;
+
+        ex = en_x[i];
+        d = en_type[i] ? 2 : 1;                  /* 4px or 2px per frame */
+        if (ex <= d + 5) { hide_enemy(i); continue; }
+        ex -= d;
+        en_x[i] = ex;
+
+        if (en_type[i] == 0) {
+            ey = en_base[i] + (signed char)sine[((frame >> 2) + (i << 2)) & 31];
+            en_y[i] = ey;
+            en_frm[i] = (frame & 8) ? SF_DRONE0 : SF_DRONE1;
+        } else ey = en_y[i];
 
         /* enemy fires the shared orb */
-        if (!orb.active && en[i].x > ship_x + 40 && (rand() & 63) == 0) {
+        if (!orb.active && ex > su + 20 && (rand() & 63) == 0) {
             orb.active = 1;
-            orb.x = en[i].x;
-            orb.y = en[i].y + 4;
+            orb.x = (unsigned int)ex << 1;
+            orb.y = ey + 4;
         }
 
-        /* bolt vs enemy */
-        if (bolt.active &&
-            bolt.x + 20 >= en[i].x && bolt.x <= en[i].x + 16 &&
-            bolt.y + 6 >= en[i].y && bolt.y <= en[i].y + 12) {
+        /* bolt vs enemy (all 8-bit now) */
+        if (bolt.active && bu + 10 >= ex && bu <= ex + 8 &&
+            bolt.y + 6 >= ey && bolt.y <= ey + 12) {
             kill_enemy(i);
             bolt.active = 0;
             set_sprite_pos(1, 0, 0);
@@ -731,9 +819,8 @@ void update_enemies(void) {
         }
 
         /* enemy vs ship */
-        if (!invuln &&
-            ship_x + 20 >= en[i].x && ship_x <= en[i].x + 16 &&
-            ship_y + 10 >= en[i].y && ship_y <= en[i].y + 12) {
+        if (!invuln && su + 10 >= ex && su <= ex + 8 &&
+            ship_y + 10 >= ey && ship_y <= ey + 12) {
             kill_enemy(i);
             ship_hit();
         }
@@ -751,7 +838,11 @@ unsigned char wait_frames(void) {
     n = vsync_flag;
     vsync_flag = 0;
     if (n > 1) POKE(MISS_COUNTER, PEEK(MISS_COUNTER) + n - 1);
-    return n > 3 ? 3 : n;
+    /* Never replay the scroll to catch up: doing two coarse steps in one
+       frame costs twice the row copy, which guarantees another overrun -
+       an avalanche. Losing a frame simply means the world moved a little
+       slower for one frame, which nobody can see. */
+    return 1;
 }
 
 /* --- Solid text panel over the scrolling terrain (no ghosting):
@@ -783,6 +874,8 @@ void reset_game(void) {
     VIC_SPR_DBL_Y = 0;
     VIC_SPR_COL(0) = 3;
     for (i = 0; i < MAX_EN; i++) hide_enemy(i);
+    mux_y[0] = 0xFF;
+    mux_count = 0;
     set_sprite_pos(1, 0, 0);
     set_sprite_pos(2, 0, 0);
 }
@@ -848,7 +941,7 @@ void play(void) {
         /* ship, or what is left of it */
         if (ship_boom) {
             ship_boom--;
-            draw_boom(0, ship_boom, ship_x, ship_y);
+            draw_ship_boom(ship_boom);
             if (!ship_boom) {
                 VIC_SPR_COL(0) = 3;
                 if (pending_over) game_over_flag = 1;
@@ -892,16 +985,17 @@ void play(void) {
 
         update_enemies();
 
-        /* spawning, faster over time */
-        t = 90 - (speed_lvl << 4);
+        /* wave spawning, tighter over time */
+        t = 150 - (speed_lvl << 5);
         if (--spawn_timer == 0) {
-            spawn_timer = t < 30 ? 30 : t;
-            spawn_enemy();
+            spawn_timer = t < 60 ? 60 : t;
+            spawn_wave();
         }
         if (score >= 500 && speed_lvl < 1) { speed_lvl = 1; hud_dirty = 1; }
         if (score >= 1500 && speed_lvl < 2) { speed_lvl = 2; hud_dirty = 1; }
         if (score >= 3000 && speed_lvl < 3) { speed_lvl = 3; hud_dirty = 1; }
 
+        build_mux();             /* sorted hand-off to the raster IRQ */
         write_telemetry();
 
         if (hud_dirty) { update_hud(); hud_dirty = 0; }
