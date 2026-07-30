@@ -150,6 +150,7 @@ unsigned char st_ch[NUM_STARS];   /* tile, encodes the depth plane */
 unsigned char st_div[NUM_STARS];  /* cycles per character step */
 unsigned char st_cnt[NUM_STARS];
 void init_stars(void);            /* defined with the scroll engine */
+void update_stars(unsigned char lo, unsigned char hi);
 
 unsigned char cur_ceil = 2, cur_floor = 2;
 
@@ -177,7 +178,12 @@ struct { unsigned int x; unsigned char y; unsigned char active; } orb;
    irq.s, so the model holds far more enemies than the VIC has sprites.
    Each entry carries its own frame and colour: nothing here touches
    the VIC directly any more, build_mux() hands the sorted list over. */
-#define MAX_EN 12
+/* Twelve was over budget: the enemy pass is linear but the multiplexer
+   sort is quadratic, so the last few craft cost far more than the first
+   few. Eight keeps every frame inside 50 Hz with margin to spare - the
+   VIC could carry more, hand-written assembly games did, but this game
+   spends its cycles in C and fluidity is worth more than density. */
+#define MAX_EN 8
 #define MUX_SLOTS 5              /* hardware sprites 3..7 */
 
 /* Structure of ARRAYS, not an array of structures: cc65 indexes a
@@ -460,6 +466,13 @@ void init_terrain(void) {
 unsigned char *front_scr(void) { return front ? SCREEN_B : SCREEN_A; }
 unsigned char *back_scr(void)  { return front ? SCREEN_A : SCREEN_B; }
 
+/* r * 40 without a multiply: cc65 calls a subroutine for every one and
+   the star layer needs two per star per coarse step */
+const unsigned int row_ofs[PF_ROWS] = {
+      0,  40,  80, 120, 160, 200, 240, 280, 320, 360, 400,
+    440, 480, 520, 560, 600, 640, 680, 720, 760, 800, 840
+};
+
 void init_stars(void) {
     unsigned char i, d;
     for (i = 0; i < NUM_STARS; i++) {
@@ -478,35 +491,41 @@ void init_stars(void) {
    index the buffer will be displayed with (head has not advanced yet).
    A star is drawn only where the terrain model says the sky is empty,
    so the foreground occludes the background for free. */
-void update_stars(void) {
+/* Repaint one horizontal band of the star layer. Called right after the
+   row copier has dealt with those rows, so the cost rides along with the
+   four copy frames instead of landing on one. */
+void update_stars(unsigned char lo, unsigned char hi) {
     unsigned char i, oldc, r;
     unsigned char nh = (head + 1) & RMASK;
     unsigned char *scr = back_scr() + PF_OFFSET;
+    unsigned int ro;
 
     for (i = 0; i < NUM_STARS; i++) {
         r = st_row[i];
+        if (r < lo || r >= hi) continue;     /* another band's turn */
+        ro = row_ofs[r];
         if (st_col[i] == 0) {
-            /* dragged off the left edge: respawn on the right */
-            st_col[i] = 39;
-            r = st_row[i] = 1 + (rand() % (PF_ROWS - 2));
+            /* dragged off the left edge: respawn on the right, inside the
+               same band so no band gets painted twice in one cycle */
+            st_col[i] = 38;                  /* 39 is the new terrain column */
+            r = st_row[i] = lo + (rand() % (hi - lo));
+            ro = row_ofs[r];
         } else {
-            oldc = st_col[i] - 1;        /* where the row copier left it */
-            scr[r * 40 + oldc] = column_char((nh + oldc) & RMASK, r);
+            oldc = st_col[i] - 1;            /* where the copier left it */
+            scr[ro + oldc] = column_char((nh + oldc) & RMASK, r);
             if (++st_cnt[i] >= st_div[i]) { st_cnt[i] = 0; st_col[i] = oldc; }
         }
         if (column_char((nh + st_col[i]) & RMASK, r) == 32)
-            scr[r * 40 + st_col[i]] = st_ch[i];
+            scr[ro + st_col[i]] = st_ch[i];
     }
 }
 
-/* The coarse-scroll work is spread so thinly across the fine-scroll
-   cycle that NO frame carries more than ~5k cycles of engine work:
-     fine 6:   generate the next column, cache its chars
-     fine 5-2: copy 5-6 playfield rows per frame (assembly)
+/* The coarse-scroll work is spread across the fine-scroll cycle so that
+   no single frame carries a heavy job:
+     fine 6:   generate the next column and cache its characters
+     fine 5-2: copy 5-6 playfield rows, then repaint that band of stars
      fine 1:   write the cached column into the back buffer
-     fine 0:   flip only ($D018 request + model advance, nearly free)
-   Colour RAM is static, so the flip frame has nothing heavy to do.
-   Returns 1 on the flip frame. */
+     fine 0:   flip only - colour RAM is static, so this frame is nearly free */
 unsigned char char_cache[PF_ROWS];
 
 void copy_row_chunk(unsigned char first, unsigned char count) {
@@ -537,18 +556,19 @@ unsigned char scroll_step(void) {
         for (r = 0; r < PF_ROWS; r++)
             char_cache[r] = column_char((head + 40) & RMASK, r);
         break;
-    case 5: copy_row_chunk(0, 6);  break;
-    case 4: copy_row_chunk(6, 6);  break;
-    case 3: copy_row_chunk(12, 5); break;
-    case 2: copy_row_chunk(17, 5); break;
-    case 1:
+    case 5: copy_row_chunk(0, 6);  update_stars(0, 6);   break;
+    case 4: copy_row_chunk(6, 6);  update_stars(6, 12);  break;
+    case 3: copy_row_chunk(12, 5); update_stars(12, 17); break;
+    case 2: copy_row_chunk(17, 5); update_stars(17, 22); break;
+    case 1: {
+        unsigned char *bs = back_scr();      /* was called once per row */
         o = PF_OFFSET + 39;
         for (r = 0; r < PF_ROWS; r++) {
-            back_scr()[o] = char_cache[r];
+            bs[o] = char_cache[r];
             o += 40;
         }
-        update_stars();          /* after the column write, never before */
         break;
+    }
     }
     return 0;
 }
@@ -684,6 +704,7 @@ void build_mux(void) {
             ord[n] = i; ys[n] = y; n++;
         }
     }
+    if (!n) { mux_y[0] = 0xFF; mux_count = 0; return; }
     for (i = 1; i < n; i++) {            /* insertion sort, ascending Y */
         y = ys[i]; t = ord[i]; j = i;
         while (j && ys[j - 1] > y) {
@@ -740,7 +761,7 @@ void spawn_one(unsigned char type, unsigned char xu, unsigned char y) {
 
 /* A wave is what the multiplexer buys: formations instead of singles */
 void spawn_wave(void) {
-    unsigned char n = 4 + (rand() & 3);          /* 4..7 craft */
+    unsigned char n = 3 + (rand() & 1);          /* 3..4 craft */
     unsigned char shape = rand() & 3;
     unsigned char base = 104 + (rand() % 60);
     unsigned char k, xu;
@@ -1027,6 +1048,11 @@ void title_screen(void) {
 
     VIC_SPR_ENA = 0x00;
     VIC_BORDER = 0;
+    mux_count = 0;               /* retire the multiplexer IRQ chain: the
+                                    sprites are off, and leaving the old
+                                    list live keeps firing interrupts down
+                                    the lower half of a static screen */
+    mux_y[0] = 0xFF;
     POKE(AGENT_TELE + 5, ST_TITLE);
     POKE(AGENT_HOLD, 0);
     draw_hud_static();
@@ -1071,6 +1097,8 @@ void game_over_screen(void) {
 
     VIC_SPR_ENA = 0x00;
     VIC_BORDER = 0;              /* clear a mid-flash red border */
+    mux_count = 0;               /* static screen: no sprites to multiplex */
+    mux_y[0] = 0xFF;
     POKE(AGENT_TELE + 5, ST_OVER);
     POKE(AGENT_HOLD, 0);
     stamp_gameover(SCREEN_A, 1);
