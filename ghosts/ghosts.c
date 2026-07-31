@@ -137,7 +137,9 @@ unsigned char art_sub = 4;       /* pixel offset inside that column */
 unsigned char art_row;           /* playfield row his feet rest on */
 unsigned char art_y;             /* sprite Y, driven by the jump arc */
 unsigned char art_frm = SF_ART_STAND;
-unsigned char jump_t = 0;        /* index into the arc, 0 = grounded */
+unsigned char jump_t = 0;        /* position along the arc while rising */
+unsigned char airborne = 0;      /* 1 while the turf is not under him */
+unsigned char jump_base;         /* foot level captured at take-off */
 unsigned char face_right = 1;
 unsigned char armour = 1;        /* 1 = knight, 0 = underwear */
 unsigned char lives = 3;
@@ -161,7 +163,7 @@ const unsigned char jump_arc[28] = {
 };
 #define JUMP_LEN 24
 
-struct { unsigned int x; unsigned char y, active; } lance;
+struct { unsigned int x; unsigned char y, active, right; } lance;
 
 /* --- enemies (multiplexed) --- */
 #define MAX_EN 6
@@ -587,6 +589,17 @@ void update_enemies(void) {
     for (i = 0; i < MAX_EN; i++) {
         if (!en_act[i]) continue;
 
+        if (en_act[i] == 2) {
+            /* Dying: hold the puff and fade. This used to fall through
+               into the walking logic, which overwrote the puff frame,
+               dragged the corpse along the ground and let it keep
+               killing Arthur. */
+            en_frm[i] = SF_PUFF;
+            if (en_x[i] > drift + 8) en_x[i] -= drift;
+            if (++en_st[i] > 10) hide_enemy(i);
+            continue;
+        }
+
         if (en_type[i] == 0) {                   /* zombie */
             if (en_st[i]) {
                 /* one pixel of daylight per frame; the soil in front of
@@ -656,9 +669,6 @@ void update_enemies(void) {
             }
         }
     }
-    /* the puff fades one frame after it appears */
-    for (i = 0; i < MAX_EN; i++)
-        if (en_act[i] == 2) { if (++en_st[i] > 10) hide_enemy(i); }
 }
 
 /* Sort the live enemies by Y and hand them to the multiplexer */
@@ -714,11 +724,16 @@ void land_on_ground(void) {
 
 void update_player(unsigned char joy) {
     unsigned char want_scroll = 0;
-    unsigned char g;
+    unsigned char g, gy;
 
     if (dead_timer) {
-        art_frm = SF_ART_JUMP;        /* the classic ragdoll tumble */
+        /* the classic ragdoll tumble - this used to return before the
+           sprite was ever moved, so nobody saw it */
+        art_frm = SF_ART_JUMP;
         if (art_y > 60) art_y -= 2;
+        set_sprite_frame(ART_SPR, art_frm);
+        VIC_SPR_ENA |= 0x01;
+        set_sprite_pos(ART_SPR, 24 + art_col * 8 + art_sub, art_y);
         return;
     }
 
@@ -727,39 +742,57 @@ void update_player(unsigned char joy) {
     if (JOY_RIGHT(joy)) {
         face_right = 1;
         want_scroll = 1;
-        if (!jump_t) art_frm = (anim & 8) ? SF_ART_RUN1 : SF_ART_RUN2;
+        if (!airborne) art_frm = (anim & 8) ? SF_ART_RUN1 : SF_ART_RUN2;
     } else if (JOY_LEFT(joy)) {
         face_right = 0;
         if (art_col > 2) {
             if (art_sub) art_sub -= 2; else { art_sub = 6; art_col--; }
         }
-        if (!jump_t) art_frm = (anim & 8) ? SF_ART_RUN1 : SF_ART_RUN2;
-    } else if (!jump_t) {
+        if (!airborne) art_frm = (anim & 8) ? SF_ART_RUN1 : SF_ART_RUN2;
+    } else if (!airborne) {
         art_frm = SF_ART_STAND;
     }
 
-    /* the rigid arc: committed the moment it starts */
-    if (jump_t) {
+    /* Vertical state. The arc stays the arcade's rigid parabola - no air
+       control - but it is measured from the ground Arthur LEFT, not from
+       whatever column happens to be under him. Anchoring it to the
+       current column made him teleport 32 pixels the moment the plateau
+       scrolled underneath. Past the end of the arc, and whenever the
+       turf falls away, gravity takes over: that is the falling the
+       old snap-to-ground model simply did not have. */
+    g = ground_row_at(art_col);
+    gy = ROW_Y(g) - 15;
+
+    if (airborne) {
         art_frm = SF_ART_JUMP;
-        g = ground_row_at(art_col);
-        art_y = ROW_Y(g) - 15 - jump_arc[jump_t - 1];
-        if (++jump_t > JUMP_LEN) {
-            jump_t = 0;
-            land_on_ground();
-        }
-    } else {
-        if (JOY_UP(joy)) {
-            jump_t = 1;
-            sfx_jump();
+        if (jump_t <= JUMP_LEN) {
+            art_y = jump_base - jump_arc[jump_t - 1];
+            jump_t++;
         } else {
-            land_on_ground();         /* follow the turf up and down */
+            art_y += 3;                          /* free fall */
         }
+        if (jump_t > 13 && art_y >= gy) {        /* descending onto turf */
+            art_y = gy;
+            airborne = 0;
+            jump_t = 0;
+        }
+    } else if (art_y < gy) {
+        airborne = 1;                            /* walked off an edge */
+        jump_t = JUMP_LEN + 1;                   /* no arc, straight down */
+    } else if (JOY_UP(joy)) {
+        airborne = 1;
+        jump_t = 1;
+        jump_base = gy;
+        sfx_jump();
+    } else {
+        art_y = gy;                              /* follow the turf up */
     }
 
     if (JOY_BTN_1(joy) && !lance.active) {
         lance.active = 1;
         lance.x = 24 + art_col * 8 + (face_right ? 16 : 0);
         lance.y = art_y + 6;
+        lance.right = face_right;
         art_frm = SF_ART_THROW;
         sfx_throw();
     }
@@ -769,7 +802,10 @@ void update_player(unsigned char joy) {
     else                        VIC_SPR_ENA |= 0x01;
     set_sprite_pos(ART_SPR, 24 + art_col * 8 + art_sub, art_y);
 
-    if (want_scroll && head + 41 < LEVEL_LEN) scroll_step();
+    if (want_scroll && head + 41 < LEVEL_LEN) {
+        scroll_step();
+        if (lance.active && lance.x > 1) lance.x--;   /* carried along */
+    }
 }
 
 /* ================= game ================= */
@@ -795,9 +831,12 @@ void reset_level(void) {
     timer = 99;
     sec_frames = 50;
     lance.active = 0;
+    airborne = 0;
+    spawn_timer = 60;
     for (i = 0; i < MAX_EN; i++) hide_enemy(i);
     mux_count = 0; mux_y[0] = 0xFF;
     VIC_SPR_COL(ART_SPR) = 14;
+    airborne = 0;
     land_on_ground();
     draw_all();                  /* also repaints the colour bands */
     draw_hud();
@@ -833,8 +872,12 @@ void play(void) {
         update_player(joy);
 
         if (lance.active) {
-            lance.x += face_right ? 6 : 0;
-            if (lance.x > 336) {
+            /* a left-thrown lance used to advance by zero pixels and so
+               never left the screen, which disarmed Arthur for good */
+            if (lance.right) lance.x += 6;
+            else if (lance.x >= 30) lance.x -= 6;
+            else lance.x = 0;
+            if (lance.x > 336 || lance.x < 26) {
                 lance.active = 0;
                 set_sprite_pos(LANCE_SPR, 0, 0);
             } else {
@@ -852,7 +895,13 @@ void play(void) {
 
         if (--sec_frames == 0) {
             sec_frames = 50;
-            if (timer) { timer--; hud_dirty = 1; }
+            if (timer) {
+                timer--;
+                hud_dirty = 1;
+            } else if (!dead_timer) {
+                dead_timer = 40;     /* the clock is the other enemy */
+                sfx_hurt();
+            }
         }
 
         if (dead_timer && !--dead_timer) {
@@ -860,7 +909,8 @@ void play(void) {
             hud_dirty = 1;
             if (!lives) game_over = 1;
             else { armour = 1; VIC_SPR_COL(ART_SPR) = 14;
-                   invuln = 80; land_on_ground(); }
+                   invuln = 80; airborne = 0; jump_t = 0;
+                   land_on_ground(); }
         }
         if (invuln) invuln--;
 
