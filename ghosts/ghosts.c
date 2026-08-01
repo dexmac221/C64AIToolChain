@@ -113,6 +113,7 @@ unsigned char read_input(void) {
 
 /* --- scroll state --- */
 unsigned char fine_pos = 7;
+unsigned char probe_raster = 0;
 unsigned char front = 0;
 unsigned char head = 0;          /* level column shown at screen column 0 */
 unsigned char char_cache[PF_ROWS];
@@ -175,6 +176,10 @@ unsigned char en_act[MAX_EN];
 unsigned char en_st[MAX_EN];     /* zombie: rise countdown; crow: phase */
 unsigned char en_frm[MAX_EN];
 unsigned char en_col[MAX_EN];
+/* 0 = still hunting Arthur, 1 = committed to walking left, 2 = right.
+   A zombie that has already touched him stops hunting and shambles on
+   past, otherwise it parks inside him and eats a life every 80 frames. */
+unsigned char en_dir[MAX_EN];
 unsigned char spawn_timer = 60;
 unsigned char scrolled_px = 0;   /* world pixels owed to the enemies */
 
@@ -382,14 +387,20 @@ void text_band(unsigned char lo, unsigned char hi) {
         memset(COLRAM + r * 40, TEXT_COLOR, 40);
 }
 
-/* A rolling profile for the far land, four columns to a step. The
-   ridge is repainted from this model every coarse scroll using half
-   the foreground column index, which is the parallax. */
-const unsigned char ridge_prof[16] = {
-    13, 13, 12, 12, 13, 13, 13, 12, 12, 12, 13, 13, 12, 13, 13, 12
+/* A rolling profile for the far land, two columns to a step. The ridge
+   is repainted from this model every coarse scroll using half the
+   foreground column index, which is the parallax.
+   The crest lives two to four rows above the plateau turf (row 14): at
+   the old height the two greens touched and read as one mass. The
+   profile swings the full three rows and turns over twice as often as
+   before so the horizon is read as land, not as a straight band. */
+const unsigned char ridge_prof[32] = {
+    11, 10, 10,  9,  9, 10, 11, 11, 10,  9,  9,  9, 10, 11, 11, 10,
+     9, 10, 11, 10,  9,  9, 10, 10, 11, 11, 10,  9, 10, 11, 10,  9
 };
-#define RIDGE_LO 11
-#define RIDGE_HI 14              /* exclusive: a thin distant horizon */
+#define RIDGE_LO 8               /* one row above the highest crest: the
+                                    scrub and crosses stand up into it */
+#define RIDGE_HI 12              /* exclusive: sky again below the ridge */
 
 /* Highest playfield row the graveyard itself occupies in column c */
 unsigned char fg_top(unsigned char c) {
@@ -400,35 +411,53 @@ unsigned char fg_top(unsigned char c) {
     return g;
 }
 
-/* The far plane: a thin band of distant land repainted from its own
-   model once per coarse scroll, sampled at half the foreground column
-   index. EVERY cell in the band is written - leaving one alone would
-   preserve what the row copier dragged in, which moves at foreground
-   speed and smears the horizon. */
-void update_ridge(void) {
-    unsigned char c, r, t, top, w, half;
-    unsigned char *scr = back_scr() + PF_OFFSET;
-    unsigned char nh = head + 1;
-    unsigned int ro;
+/* There are only three crest heights, so the four cells of a ridge
+   column are one of six canned patterns: three plain, three with a
+   cross standing on the crest. Deciding row by row cost the frame
+   budget two whole frames per coarse scroll; copying four bytes out of
+   a table costs almost nothing. Rows are RIDGE_LO..RIDGE_HI-1 top
+   down; the last one thins out so the band fades into the night
+   instead of ending on a ruled line. */
+#define RC_SKY 32
+const unsigned char ridge_cells[24] = {
+    /* crest 9  */ RC_SKY,      T_RIDGE_TOP, T_RIDGE,     T_RIDGE_BASE,
+    /* crest 10 */ RC_SKY,      RC_SKY,      T_RIDGE_TOP, T_RIDGE_BASE,
+    /* crest 11 */ RC_SKY,      RC_SKY,      RC_SKY,      T_RIDGE_TOP,
+    /* the same three with a cross one row above the crest */
+    /* crest 9  */ T_FAR_CROSS, T_RIDGE_TOP, T_RIDGE,     T_RIDGE_BASE,
+    /* crest 10 */ RC_SKY,      T_FAR_CROSS, T_RIDGE_TOP, T_RIDGE_BASE,
+    /* crest 11 */ RC_SKY,      RC_SKY,      T_FAR_CROSS, T_RIDGE_TOP
+};
 
-    for (c = 0; c < 40; c++) {
+/* The far plane: a band of distant land repainted from its own model
+   once per coarse scroll, sampled at half the foreground column index.
+   EVERY cell in the band is written - leaving one alone would preserve
+   what the row copier dragged in, which moves at foreground speed and
+   smears the horizon. Four walking pointers, one per row, so the inner
+   work is a byte store and not a 16-bit index computation. */
+void update_ridge(unsigned char c, unsigned char cend) {
+    unsigned char t, top, w, half;
+    const unsigned char *pat;
+    unsigned char *p0 = back_scr() + PF_OFFSET + (RIDGE_LO * 40) + c;
+    unsigned char *p1 = p0 + 40, *p2 = p1 + 40, *p3 = p2 + 40;
+    unsigned char nh = head + 1;
+
+    for (; c < cend; c++) {
         w = nh + c;
-        top = fg_top(w);
         half = w >> 1;                             /* half speed */
-        t = ridge_prof[(half >> 2) & 15];
-        for (r = RIDGE_LO; r < RIDGE_HI; r++) {
-            ro = row_ofs[r];
-            if (r >= top) {                        /* graveyard wins here */
-                scr[ro + c] = column_char(w, r);
-            } else if (r > t) {
-                scr[ro + c] = T_RIDGE;
-            } else if (r == t) {
-                scr[ro + c] = T_RIDGE_TOP;
-            } else if (r == t - 1 && (half & 7) == 3) {
-                scr[ro + c] = T_FAR_CROSS;         /* a cross on the crest */
-            } else {
-                scr[ro + c] = 32;
-            }
+        t = ridge_prof[(half >> 1) & 31];
+        pat = ridge_cells + (((half & 7) == 3) ? 12 : 0) + ((t - 9) << 2);
+        /* Only the plateau reaches into the band; everywhere else the
+           graveyard is far below it and the pattern goes down whole. */
+        if (w >= LEVEL_LEN || level_ground[w] > 16) {
+            *p0++ = pat[0]; *p1++ = pat[1];
+            *p2++ = pat[2]; *p3++ = pat[3];
+        } else {
+            top = fg_top(w);
+            *p0++ = (RIDGE_LO     >= top) ? column_char(w, RIDGE_LO)     : pat[0];
+            *p1++ = (RIDGE_LO + 1 >= top) ? column_char(w, RIDGE_LO + 1) : pat[1];
+            *p2++ = (RIDGE_LO + 2 >= top) ? column_char(w, RIDGE_LO + 2) : pat[2];
+            *p3++ = (RIDGE_LO + 3 >= top) ? column_char(w, RIDGE_LO + 3) : pat[3];
         }
     }
 }
@@ -437,7 +466,9 @@ void init_bg(void) {
     unsigned char i;
     for (i = 0; i < NUM_BG; i++) {
         bg_col[i] = rand() % 39;
-        bg_row[i] = 3 + (rand() % 8);              /* high, cold sky */
+        bg_row[i] = 3 + (rand() % 5);              /* above the ridge band,
+                                                      which repaints last
+                                                      and would eat them */
         bg_ch[i] = T_STAR;
         bg_div[i] = 3 + (i & 1);                   /* 1/3 and 1/4 speed */
         bg_cnt[i] = rand() & 3;
@@ -507,6 +538,7 @@ unsigned char scroll_step(void) {
     }
     fine_pos--;
     fine_next = fine_pos;
+    probe_raster = PEEK(0xD012);
     switch (fine_pos) {
     case 6:
         for (r = 0; r < PF_ROWS; r++)
@@ -514,15 +546,26 @@ unsigned char scroll_step(void) {
         break;
     case 5: copy_row_chunk(0, 6);  update_bg(0, 6);   break;
     case 4: copy_row_chunk(6, 6);  update_bg(6, 12);  break;
-    case 3: copy_row_chunk(12, 6); break;
-    case 2: copy_row_chunk(18, 5); update_bg(18, 23); break;
+    /* The horizon band is four rows of forty columns: repainting it in
+       one go cost most of a frame and dropped one every coarse scroll.
+       The copier is done with rows 8-11 by now, so the repaint can be
+       spread over the three remaining frames of the cycle. */
+    case 3: copy_row_chunk(12, 6); update_ridge(0, 14);  break;
+    case 2: copy_row_chunk(18, 5); update_bg(18, 23);
+            update_ridge(14, 27); break;
     case 1: {
         unsigned char *bs = back_scr();
-        update_ridge();
+        update_ridge(27, 40);
         o = PF_OFFSET + 39;
         for (r = 0; r < PF_ROWS; r++) { bs[o] = char_cache[r]; o += 40; }
         break;
     }
+    }
+    /* PROBE: worst scanline cost of each phase, one byte per fine_pos
+       at $0350..$0356. One scanline is 63 cycles, a frame is 312. */
+    {
+        unsigned char d = PEEK(0xD012) - probe_raster;
+        if (d > PEEK(0x0350 + fine_pos)) POKE(0x0350 + fine_pos, d);
     }
     return 0;
 }
@@ -573,6 +616,7 @@ void spawn_enemy(void) {
             en_col[i] = 11;
         }
         en_x[i] = (unsigned char)((24 + c * 8) >> 1);
+        en_dir[i] = 0;
         en_act[i] = 1;
         return;
     }
@@ -615,7 +659,9 @@ void update_enemies(void) {
                    of Arthur matches his pace once the scroll is added in,
                    and the pair looks glued together */
                 if (frame & 1) {
-                    if (en_x[i] > au + 1) en_x[i] -= 1;
+                    if (en_dir[i] == 1)      en_x[i] -= 1;
+                    else if (en_dir[i] == 2) en_x[i] += 1;
+                    else if (en_x[i] > au + 1) en_x[i] -= 1;
                     else if (en_x[i] + 1 < au) en_x[i] += 1;
                 }
                 /* stay on the turf: the graveyard steps up and down and a
@@ -661,6 +707,9 @@ void update_enemies(void) {
             art_y + 18 >= en_y[i] && art_y <= en_y[i] + 16) {
             sfx_hurt();
             invuln = 80;
+            /* it keeps the heading it already had and walks straight
+               through him, so one zombie costs one hit and not a life */
+            if (en_type[i] == 0) en_dir[i] = (en_x[i] >= au) ? 1 : 2;
             if (armour) {
                 armour = 0;                      /* stripped to the shorts */
                 VIC_SPR_COL(ART_SPR) = 1;

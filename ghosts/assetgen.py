@@ -203,7 +203,19 @@ TILES = [
         " # #",
         "# # ",
     ]),
-    # 16 STAR - a cold point of light
+    # 16 RIDGE_BASE - the foot of the far land, thinning into the haze
+    # so the band does not end on a hard straight line
+    ("RIDGE_BASE", [
+        "# # ",
+        " # #",
+        "#   ",
+        "  # ",
+        "    ",
+        " #  ",
+        "    ",
+        "    ",
+    ]),
+    # 17 STAR - a cold point of light
     ("STAR", [
         "    ",
         "    ",
