@@ -59,18 +59,15 @@ charset `$5000`, sprite data `$5800`.
 
 ## What is not there yet
 
-- The dithered horizon sits at almost the same height as the plateau
-  turf, so the two read as one green mass; it wants raising by two or
-  three rows, or a more undulating profile.
-
 - Scripted enemy placement (spawns are still random) and the flesh-eating
   plants from the original.
 - A real end of level: the map simply runs out.
 - Distinct underwear frames for Arthur — losing the armour is only a
   sprite colour change right now.
 - The ladder/platform section of the arcade level 1.
-- The horizon profile undulates very little; it reads as a slightly too
-  regular ribbon.
+- The dithered horizon sits at almost the same height as the plateau
+  turf, so the two read as one green mass, and its profile undulates
+  very little: it wants raising two or three rows and a rougher crest.
 
 ## C64 lessons this game paid for
 
