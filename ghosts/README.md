@@ -41,8 +41,10 @@ charset `$5000`, sprite data `$5800`.
   height plus a decoration id (headstone, cross, dead tree, railing),
   with a plateau in the middle to jump onto.
 - **Arthur**: run animation, fixed 24-entry jump arc (no air control, as
-  in the arcade), lance throwing, armour → underwear → death, respawn,
-  3 lives, level timer.
+  in the arcade) anchored to the ground he took off from, a real airborne
+  state with gravity past the end of the arc and when the turf falls away
+  beneath him, lance throwing in both directions, armour → underwear →
+  death, respawn, 3 lives, a level timer that kills when it runs out.
 - **Enemies**: zombies that rise out of the soil and shamble toward
   Arthur while following the ground height; crows that cross the sky.
   Killed enemies leave a puff. All multiplexed.
@@ -56,6 +58,10 @@ charset `$5000`, sprite data `$5800`.
 - Title screen, demo autopilot, game over.
 
 ## What is not there yet
+
+- The dithered horizon sits at almost the same height as the plateau
+  turf, so the two read as one green mass; it wants raising by two or
+  three rows, or a more undulating profile.
 
 - Scripted enemy placement (spawns are still random) and the flesh-eating
   plants from the original.
@@ -86,6 +92,13 @@ counts only bit pairs `10` and `11` as foreground.** Soil drawn with
 were redrawn on `10`/`11` so that zombies with low priority really are
 buried until they climb out.
 
+**A state is not a flag.** Both game-breaking bugs found in review had
+the same shape: `face_right ? 6 : 0` moved a left-thrown lance by zero
+pixels, so it never reached the edge that clears it and Arthur stayed
+disarmed; and `en_act` grew a third value (2 = dying) while the loop
+still tested it as a boolean, so corpses kept walking and could still
+kill. Both compiled, ran, and looked plausible.
+
 **Enemies must be dragged by the scroll.** Their X lives in screen
 space, so every pixel the world scrolls is owed back to them; without it
 a zombie chasing the player at 2px/frame exactly matched his pace and
@@ -99,6 +112,13 @@ the pair looked glued together.
 - **Frozen-frame capture**: a single monitor connection that inspects
   state *and* takes the screenshot without resuming, so the picture is
   exactly the frame that was inspected.
+- **In-RAM probes**: to check the jump no longer teleports, the game
+  itself recorded the largest single-frame change of Arthur's Y and the
+  value was read once at the end — 32+ pixels before the fix, 12 after,
+  and those 12 are the landing snap. The first version of that probe
+  measured the wrong thing (it counted respawns, which are supposed to
+  be abrupt) and had to be narrowed to the flight phase: measuring the
+  wrong quantity is as easy as writing the bug.
 - **Model measurement**: read the game's own arrays (`$033D` misses,
   multiplexer tables) through the monitor instead of trusting the eye.
 - Note the observer effect: every monitor connection freezes the
