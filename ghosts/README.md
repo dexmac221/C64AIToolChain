@@ -20,6 +20,10 @@ armour before he loses his life.
 | `ghosts.cfg` | linker config: code below $4000, VIC bank 1 gap, data at $8000 |
 | `tiles_mc.h`, `sprites_mc.h`, `level.h` | generated, do not edit by hand |
 
+Art is judged with `../assetsheet.py ghosts/assetgen.py`, which draws
+every sprite and tile magnified in the game's own colours. Do not trust a
+screenshot to tell you whether a sprite reads.
+
 Memory map (VIC bank 1): screen A `$4400`, screen B `$4800`,
 charset `$5000`, sprite data `$5800`.
 
@@ -65,9 +69,8 @@ charset `$5000`, sprite data `$5800`.
 - Distinct underwear frames for Arthur — losing the armour is only a
   sprite colour change right now.
 - The ladder/platform section of the arcade level 1.
-- The dithered horizon sits at almost the same height as the plateau
-  turf, so the two read as one green mass, and its profile undulates
-  very little: it wants raising two or three rows and a rougher crest.
+- The crow was never redrawn to match the taller figures, and its hit
+  box is a flat 8 pixels because of it.
 
 ## C64 lessons this game paid for
 
@@ -95,6 +98,16 @@ pixels, so it never reached the edge that clears it and Arthur stayed
 disarmed; and `en_act` grew a third value (2 = dying) while the loop
 still tested it as a boolean, so corpses kept walking and could still
 kill. Both compiled, ran, and looked plausible.
+
+**Art authored blind is art nobody looked at.** Sprites are written as
+ASCII here and then only ever seen 21 pixels tall inside a 384x272
+screenshot - which is to say, never seen. Rendering them magnified, in
+the colours the game actually sets (`assetsheet.py`), showed at once that
+Arthur and the zombie were *the same silhouette in two colours*, and that
+both were as wide as they were tall because they used fourteen of the
+twenty-one rows. That is why the two of them had looked glued together
+in play, a complaint that had been filed against the scrolling. Both now
+use the full height, and the zombie has nothing vertical anywhere on it.
 
 **Enemies must be dragged by the scroll.** Their X lives in screen
 space, so every pixel the world scrolls is owed back to them; without it

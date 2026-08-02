@@ -603,7 +603,7 @@ void spawn_enemy(void) {
             c = 30 + (rand() & 7);               /* screen column */
             g = level_ground[head + c];
             en_type[i] = 0;
-            en_st[i] = 20;                       /* frames spent climbing */
+            en_st[i] = 29;                       /* frames spent climbing */
             en_y[i] = ROW_Y(g) + 8;              /* under the turf, unseen */
             en_frm[i] = SF_ZOM_RISE;
             en_col[i] = 5;
@@ -623,7 +623,7 @@ void spawn_enemy(void) {
 }
 
 void update_enemies(void) {
-    unsigned char i, au, drift = 0;
+    unsigned char i, au, en_h, drift = 0;
     au = (unsigned char)((24 + art_col * 8 + art_sub) >> 1);
 
     /* enemy X lives in 2-pixel units, so the world owes them one unit
@@ -650,7 +650,7 @@ void update_enemies(void) {
                    the sprite does the rest of the work */
                 en_st[i]--;
                 en_y[i] -= 1;
-                en_frm[i] = (en_st[i] > 10) ? SF_ZOM_RISE
+                en_frm[i] = (en_st[i] > 14) ? SF_ZOM_RISE
                           : ((frame & 8) ? SF_ZOM_WALK1 : SF_ZOM_WALK2);
             } else {
                 unsigned char c, g;
@@ -670,7 +670,7 @@ void update_enemies(void) {
                 c = (en_x[i] - 12) >> 2;              /* screen column */
                 if (c < 40) {
                     g = level_ground[head + c];
-                    en_y[i] = ROW_Y(g) - 12;
+                    en_y[i] = ROW_Y(g) - 21;
                 }
             }
         } else {                                 /* crow */
@@ -683,11 +683,16 @@ void update_enemies(void) {
         if (en_x[i] > drift + 8) en_x[i] -= drift;
         else { hide_enemy(i); continue; }
 
+        /* Hit boxes follow the art: a zombie is as tall as Arthur now,
+           a crow is a third of that, and one box for both would let a
+           bird kill him from well above his helmet. */
+        en_h = en_type[i] ? 8 : 20;
+
         /* lance vs enemy */
         if (lance.active) {
             unsigned char lu = (unsigned char)(lance.x >> 1);
             if (lu + 10 >= en_x[i] && lu <= en_x[i] + 8 &&
-                lance.y + 8 >= en_y[i] && lance.y <= en_y[i] + 16) {
+                lance.y + 8 >= en_y[i] && lance.y <= en_y[i] + en_h) {
                 en_frm[i] = SF_PUFF;
                 en_col[i] = 1;
                 en_st[i] = 0;
@@ -704,7 +709,7 @@ void update_enemies(void) {
         /* enemy vs Arthur */
         if (!invuln && !dead_timer &&
             au + 8 >= en_x[i] && au <= en_x[i] + 8 &&
-            art_y + 18 >= en_y[i] && art_y <= en_y[i] + 16) {
+            art_y + 21 >= en_y[i] && art_y + 3 <= en_y[i] + en_h) {
             sfx_hurt();
             invuln = 80;
             /* it keeps the heading it already had and walks straight
@@ -768,7 +773,7 @@ unsigned char ground_row_at(unsigned char scr_col) {
 
 void land_on_ground(void) {
     art_row = ground_row_at(art_col);
-    art_y = ROW_Y(art_row) - 15;      /* his boots on the turf */
+    art_y = ROW_Y(art_row) - 21;      /* his boots on the turf */
 }
 
 void update_player(unsigned char joy) {
@@ -810,7 +815,7 @@ void update_player(unsigned char joy) {
        turf falls away, gravity takes over: that is the falling the
        old snap-to-ground model simply did not have. */
     g = ground_row_at(art_col);
-    gy = ROW_Y(g) - 15;
+    gy = ROW_Y(g) - 21;
 
     if (airborne) {
         art_frm = SF_ART_JUMP;
@@ -840,7 +845,7 @@ void update_player(unsigned char joy) {
     if (JOY_BTN_1(joy) && !lance.active) {
         lance.active = 1;
         lance.x = 24 + art_col * 8 + (face_right ? 16 : 0);
-        lance.y = art_y + 6;
+        lance.y = art_y + 9;
         lance.right = face_right;
         art_frm = SF_ART_THROW;
         sfx_throw();

@@ -270,6 +270,23 @@ survives 12×21 is a bold shape with real tonal structure; realistic figures,
 spread wings and heraldry arrive as mush, whatever generated or drew them. See
 [img2sprite_examples.png](articles/img2sprite_examples.png).
 
+### `assetsheet.py`
+The other direction, and the more useful one. Art authored as ASCII inside a
+game's `assetgen.py` is only ever seen 21 pixels tall inside a screenshot —
+which is to say, never seen. This draws every sprite and tile magnified, in the
+colours the game actually sets, on the game's own background.
+
+```bash
+./assetsheet.py ghosts/assetgen.py --out /tmp/sheet.png
+./assetsheet.py ghosts/assetgen.py --strip ART_RUN1,ART_RUN2 --scale 14
+./assetsheet.py ghosts/assetgen.py --tiles --grid
+```
+
+It paid for itself the first time it was run: GHOST KEEP's knight and its
+zombies turned out to be [the same silhouette in two
+colours](articles/ghostkeep_sprite_redraw.png), which had been mistaken for a
+scrolling problem.
+
 ### `screenshot.sh`
 Capture screenshots from VICE via the remote monitor. Supports multiple formats.
 
