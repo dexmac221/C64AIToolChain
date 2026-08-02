@@ -251,6 +251,25 @@ The "brain" of the visual feedback loop. It takes a screenshot from VICE, sends 
 ### `reload_game.py`
 The hands of the system. It automates the tedious process of detaching the disk image, loading the new PRG, and restarting the program execution, preserving the emulator window.
 
+### `img2sprite.py`
+Turns any picture into the 12×21 multicolour grid the games' `assetgen.py`
+already eats. A sprite is 63 bytes with four states per cell — transparent,
+`$D025`, `$D026`, and the sprite's own colour — so the script's whole job is
+spending that budget: mask the subject, average it down, and fit every cell to
+the nearest of the three inks (brute-forcing the palette when you let it
+choose).
+
+```bash
+./img2sprite.py knight.png --name ART_STAND --preview /tmp/k.png
+./img2sprite.py zombie.png --stretch --ink 5 --outline   # shape only
+```
+
+It is exact — round-tripping a hand-drawn sprite through a rendered PNG gives
+back all 21 rows unchanged — but exactness is not the same as usefulness. What
+survives 12×21 is a bold shape with real tonal structure; realistic figures,
+spread wings and heraldry arrive as mush, whatever generated or drew them. See
+[img2sprite_examples.png](articles/img2sprite_examples.png).
+
 ### `screenshot.sh`
 Capture screenshots from VICE via the remote monitor. Supports multiple formats.
 
