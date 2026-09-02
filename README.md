@@ -55,6 +55,16 @@ A Boulder Dash tribute with authentic cave physics: boulders and gems fall, roll
 
 ---
 
+### ⛏️ IRON VEIN — *Claude Code (Fable 5.1)*
+
+<p align="center">
+  <img src="ironvein/ironvein_demo.gif" alt="IRON VEIN demo" width="480">
+</p>
+
+An 8-way scrolling action demo in the Turrican class, spike-first: the engine was profiled until it said 50 fps before a tile was drawn. Double-buffered screen RAM with colour per world row (colour RAM cannot be double-buffered, so the art direction follows the engine), a commit-and-stall camera that prepares the shifted buffer over seven frames, a HUD/playfield split verified in all eight fine-scroll phases, a double-banked sprite multiplexer, and every per-object routine in assembly after cc65 measured four times slower. Gravity, a designed 64x32 level, a four-sprite boss. The diary with every dead end is [ironvein/DEVLOG.md](ironvein/DEVLOG.md); the article is [articles/IRONVEIN_8WAY.md](articles/IRONVEIN_8WAY.md).
+
+---
+
 ### 🌌 ION RIFT — *Claude Code (Fable)*
 
 <p align="center">
