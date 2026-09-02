@@ -295,3 +295,35 @@ the first reading of the shot state said every bolt died in its first
 frame - it was read at the previous build's addresses, four bytes off.
 The lesson from day one, re-learned: re-read the label file after
 every build, before every monitor command.
+
+## Day 4 — a level that was designed
+
+The procedural cave was scaffolding: it proved the engine could show
+any map, and it looked like it. The level is now a 64 x 32 drawing in
+assetgen.py, one character per metatile, and it is drawn the way a
+designer would draw it: rock, air, decorations. The edges - the mossy
+TOP under air, the BOTTOM over it, the side walls beside it - are
+derived at build time, so the drawing stays legible and a change is
+one character, not four.
+
+Its shape follows the four colour bands, because colour is per row and
+free: a blue surface under a starry sky with a plateau, a bridge with
+a tile missing and a shaft under the hole; the cyan crystal cave with
+its girder platforms and spikes; the long green hall with pillars and
+lamps; the red gallery, and at its end the arena where the boss will
+stand, with a grated floor. Three shafts join them. Every gap is one
+tile or less, because the hero's jump was measured on day two: 42
+pixels up, about 28 along - a one-tile gap clears with the box's
+width to spare, a two-tile gap never.
+
+The hero starts on the plateau and the camera starts where its dead
+zone would have put it; the level file tells C both. The autopilot
+then plays the level like a player who never lets go of right: off
+the plateau, down the first shaft, along the cave.
+
+Measured once, 3 224 frames of autopilot: 8 lost, 158 late (4.9%).
+The eight lost frames are new and coincide with a death, when eight
+walkers explode and respawn within a few frames of each other; not
+chased. The autopilot died once in eighty seconds - eight walkers
+dropping in from the sides are more than a hero who never dodges can
+take. That is the game's problem now, not the engine's.

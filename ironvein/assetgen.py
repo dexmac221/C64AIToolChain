@@ -19,7 +19,6 @@ Multicolor sprite (12 wide-pixels x 21 rows):
   ' ' = 00 transparent          '.' = 01 shared ($D025)
   '#' = 10 per-sprite colour    '+' = 11 shared ($D026)
 """
-import random
 
 MC_TILE = {' ': 0, '.': 1, '+': 2, '#': 3}
 MC_SPR = {' ': 0, '.': 1, '#': 2, '+': 3}
@@ -211,55 +210,72 @@ SOLID = {"ROCK", "TOP", "GIRDER", "PILLAR", "ORE", "CRYSTAL", "HAZARD",
 MAP_W, MAP_H = 64, 32
 
 
-def build_map(seed=7):
-    """A cave with a rolling floor, a ceiling, hanging pillars, floating
-    girders and pockets of ore and crystal. Procedural for the spike; the
-    game gets a hand-designed map through the same format."""
-    rnd = random.Random(seed)
-    m = [["AIR"] * MAP_W for _ in range(MAP_H)]
-    # the view is 22 character rows = 5.5 metatiles; keep the air band
-    # narrower than that so rock is always on screen
-    floor = 18
-    ceil = 12
-    for x in range(MAP_W):
-        if x % 5 == 0:
-            floor = max(16, min(21, floor + rnd.choice((-1, 0, 0, 1))))
-            ceil = max(9, min(13, ceil + rnd.choice((-1, 0, 0, 1))))
-        for y in range(MAP_H):
-            if y >= floor:
-                m[y][x] = "TOP" if y == floor else rnd.choice(
-                    ("ROCK", "ROCK", "ROCK", "ORE", "CRYSTAL"))
-            elif y <= ceil:
-                m[y][x] = "BOTTOM" if y == ceil else "ROCK"
-            elif y < ceil + 5 and rnd.random() < 0.02:
-                m[y][x] = "STARS"
-    # hanging pillars from the ceiling
-    for x in range(4, MAP_W - 4, rnd.choice((7, 9, 11))):
-        top = next(y for y in range(MAP_H) if m[y][x] == "AIR")
-        for y in range(top, top + rnd.randint(2, 4)):
-            if m[y][x] == "AIR":
-                m[y][x] = "PILLAR"
-    # floating girders
-    for _ in range(40):
-        x = rnd.randint(2, MAP_W - 6)
-        y = rnd.randint(ceil + 1, 20)
-        w = rnd.randint(2, 4)
-        if all(m[y][x + i] == "AIR" and m[y + 1][x + i] == "AIR"
-               for i in range(w)):
-            for i in range(w):
-                m[y][x + i] = "GIRDER"
-    # some spikes on the floor, a lamp here and there
-    for x in range(MAP_W):
-        for y in range(1, MAP_H):
-            if m[y][x] == "TOP" and rnd.random() < 0.08:
-                m[y][x] = "HAZARD"
-            if m[y][x] == "AIR" and m[y - 1][x] in ("ROCK", "BOTTOM") \
-                    and rnd.random() < 0.06:
-                m[y][x] = "LAMP"
-    # hard walls at both ends
+# The level, one character per metatile, 64 x 32. Drawn as rock and
+# air plus the decorations; the edges (TOP under air, BOTTOM over air,
+# WALL_L/WALL_R beside it) are derived, so the drawing stays readable.
+# Four colour bands top to bottom: the blue surface and sky, the cyan
+# crystal cave, the green halls, the red gallery and the boss arena.
+#   . air   R rock   O ore   C crystal   H spikes   G girder   P pillar
+#   l lamp  g grate  * stars   L/Q the hard walls at both ends
+LEVEL = [
+    "L..*............*.............*..........*..........*..........Q",
+    "L........*............*......................*............*....Q",
+    "L............*.......................*.........................Q",
+    "L...........................................................*..Q",
+    "L...........................................P..l..P..l..P......Q",
+    "LRRRRRRRRRRRRRRRRRR....RRRRRRRRRRRRGGG.GGRRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRRRRRRRRRRRRRRRRR....RRRRRRRRRRRRRRR.RRRRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRRRRRRRRRRRRRRRRR....RRRRRRRRRRRRRRR.RRRRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRRRRRRRRRRRRRRRRR....RRRRRRRRRRRRRRR.RRRRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRR....C...........l.........l..........RRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRR......C.........................C....RRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRR....GGGG............C.......GGGG.....RRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRR..C.......GGGG........GGGG...........RRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRR...........................C......C..RRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRRRRRRRRRRHHHRRRRRRRRRHHRRRRRRRRRR.............RRRRRRRRRRRRRRQ",
+    "LRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR.....GGGG....RRRRRRRRRRRRRRQ",
+    "LRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR.............RRRRRRRRRRRRRRQ",
+    "LRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR.............RRRRRRRRRRRRORQ",
+    "LR..............P.......l...P.........P.......l...P........RORRQ",
+    "LR............................GGGG.........................RRRRQ",
+    "LR........GGGG......GGGG................GGGG...............ORRRQ",
+    "LR.........................................................RORRQ",
+    "LR....RRRRRRRRRRRRRRRRRRRRHHRRRRRRRRHHRRRRRRRRRRRRRRRRRRRRRRRRRQ",
+    "LR....RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRQ",
+    "LR....RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR...l.........l...RQ",
+    "LR....ORRRRRRRRRRRRRRRRRRRRRORRRRRRRRRRRRRRRR.................RQ",
+    "LR.........l.........l...........l.......RRRR.C...............RQ",
+    "LR..........GGGG......GGGG........GGGG......................C.RQ",
+    "LR..............O......................O......................RQ",
+    "LRRRRRRRHHHRRRRRRRHHHRRRRRRRRRHHHRRRRRRRRRRRRRRgRRRgRRRgRRRgRRRQ",
+    "LRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRQ",
+    "LRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRQ",
+]
+
+LEVEL_KEY = {
+    ".": "AIR", "R": "ROCK", "O": "ORE", "C": "CRYSTAL", "H": "HAZARD",
+    "G": "GIRDER", "P": "PILLAR", "l": "LAMP", "g": "GRATE", "*": "STARS",
+    "L": "WALL_L", "Q": "WALL_R",
+}
+HERO_START = (2, 4)              # metatile column and row of the hero's feet
+                                 # (standing on the tile below)
+
+
+def build_map():
+    m = [[LEVEL_KEY[c] for c in r] for r in LEVEL]
+    assert len(m) == MAP_H and all(len(r) == MAP_W for r in m)
+
+    def is_air(x, y):
+        return 0 <= x < MAP_W and 0 <= y < MAP_H and m[y][x] in (
+            "AIR", "LAMP", "STARS")
     for y in range(MAP_H):
-        m[y][0] = "WALL_L"
-        m[y][MAP_W - 1] = "WALL_R"
+        for x in range(MAP_W):
+            if LEVEL[y][x] != "R":
+                continue
+            if is_air(x, y - 1):   m[y][x] = "TOP"
+            elif is_air(x, y + 1): m[y][x] = "BOTTOM"
+            elif is_air(x - 1, y): m[y][x] = "WALL_L"
+            elif is_air(x + 1, y): m[y][x] = "WALL_R"
     return m
 
 
@@ -646,6 +662,8 @@ def emit_level(path):
         f.write("/* generated by assetgen.py - do not edit */\n")
         f.write(f"#define MAP_W {MAP_W}\n#define MAP_H {MAP_H}\n")
         f.write(f"#define NUM_MT {len(METATILES)}\n")
+        f.write(f"#define HERO_START_X {HERO_START[0] * 32 + 10}\n")
+        f.write(f"#define HERO_START_Y {(HERO_START[1] + 1) * 32 - 21}\n")
         for name, i in MT_ID.items():
             f.write(f"#define MT_{name} {i}\n")
         f.write(f"const unsigned char mt_chars[{len(METATILES) * 16}] = {{\n")

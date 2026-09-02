@@ -122,7 +122,8 @@ void probe(unsigned char slot, unsigned int start);
 #endif
 
 /* --- camera --- */
-unsigned char cam_cx = 4, cam_cy = 46;    /* char column/row at screen origin */
+unsigned char cam_cx = 0, cam_cy = 12;    /* char column/row at screen origin:
+                                             where the dead zone puts the hero's start */
 unsigned char fx = 0, fy = 0;             /* fine position 0..7 inside it */
 unsigned char front = 0;
 unsigned char fill_pending = 0;   /* a vertical step: repaint colour RAM */
@@ -640,8 +641,8 @@ void main(void) {
     draw_full(SCREEN_A);
     draw_full(SCREEN_B);
     { unsigned char r; for (r = 0; r < PF_ROWS; r++) rowcol[r] = row_col[cam_cy + r]; }
-    hero_x = (unsigned int)cam_cx * 8 + 150;
-    hero_y = (unsigned int)cam_cy * 8 + 40;
+    hero_x = HERO_START_X;
+    hero_y = HERO_START_Y;
     init_walkers();
     memset((void*)0x0368, 0, 8);
     /* an unterminated multiplexer table is walked into the rest of BSS
