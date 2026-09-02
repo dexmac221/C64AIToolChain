@@ -13,8 +13,9 @@
 #define T_LIGHT 139
 #define T_GRATE 140
 #define T_STAR 141
+#define T_BAR 142
 #define T_AIR 32
-const unsigned char tile_gfx[112] = {
+const unsigned char tile_gfx[120] = {
     0x55, 0x75, 0x55, 0x5D, 0x55, 0xD5, 0x55, 0x57, /* ROCK */
     0x55, 0x55, 0x65, 0x55, 0x56, 0x55, 0x95, 0x55, /* ROCK2 */
     0xFF, 0xEF, 0xAA, 0x55, 0x55, 0x65, 0x55, 0x55, /* EDGE_T */
@@ -29,6 +30,7 @@ const unsigned char tile_gfx[112] = {
     0x3C, 0xFF, 0x3C, 0x14, 0x14, 0x55, 0x55, 0x55, /* LIGHT */
     0xDD, 0x77, 0xDD, 0x77, 0xDD, 0x77, 0xDD, 0x77, /* GRATE */
     0x00, 0x00, 0x0C, 0x00, 0x00, 0x00, 0x00, 0x00, /* STAR */
+    0x00, 0xFC, 0xFC, 0xFC, 0xFC, 0xFC, 0xFC, 0x00, /* BAR */
 };
 const unsigned char char_col[256] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -39,7 +41,7 @@ const unsigned char char_col[256] = {
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    14, 14, 13, 14, 14, 14, 15, 11, 15, 11, 10, 9, 13, 9, 1, 1,
+    14, 14, 13, 14, 14, 14, 15, 11, 15, 11, 10, 9, 13, 9, 15, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,

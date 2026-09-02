@@ -305,16 +305,25 @@ void camera_step(signed char vx, signed char vy) {
 /* ================= sprites ================= */
 
 #define NUM_WK 8
-/* Walkers: structure of arrays, bytes only. World position as lo/hi,
-   signed velocities, on = standing on ground. Their physics is in
-   physics.s; C only spawns them. */
-unsigned char dr_xlo[NUM_WK], dr_xhi[NUM_WK];
-unsigned char dr_ylo[NUM_WK], dr_yhi[NUM_WK];
-signed char dr_vx[NUM_WK], dr_vy[NUM_WK];
-unsigned char dr_on[NUM_WK], dr_col[NUM_WK];
+#define SHOT0 8
+#define NUM_OBJ 12
+#define DYING 17
+/* Objects: structure of arrays, bytes only. 0..7 are walkers, 8..11 the
+   hero's shots. World position as lo/hi, signed velocities, on =
+   standing on ground, st = 0 free / 1 alive / 2..DYING exploding,
+   ptr = sprite pointer, life = frames left (shots). All of their
+   per-frame logic is in physics.s; C only spawns them. */
+unsigned char dr_xlo[NUM_OBJ], dr_xhi[NUM_OBJ];
+unsigned char dr_ylo[NUM_OBJ], dr_yhi[NUM_OBJ];
+signed char dr_vx[NUM_OBJ], dr_vy[NUM_OBJ];
+unsigned char dr_on[NUM_OBJ], dr_col[NUM_OBJ];
+unsigned char dr_st[NUM_OBJ], dr_ptr[NUM_OBJ], dr_life[NUM_OBJ];
+unsigned char kills = 0;                 /* bumped by update_shots */
 extern unsigned int cam_px, cam_py;
 extern unsigned char mux_bank;
 void update_walkers(void);
+void update_shots(void);
+unsigned char hero_touch(void);
 void build_mux(void);
 extern unsigned int col_x, col_y;
 unsigned char solid_at(void);
@@ -334,6 +343,8 @@ void spawn_walker(unsigned char i) {
     dr_vy[i] = 0;
     dr_on[i] = 0;
     dr_col[i] = (i & 1) ? 10 : 13;
+    dr_ptr[i] = SPR_PTR_BASE + SF_DRONE1;
+    dr_st[i] = 1;
 }
 
 void init_walkers(void) {
@@ -355,7 +366,11 @@ void init_walkers(void) {
 unsigned int hero_x, hero_y;
 unsigned char hero_blocked = 0;
 signed char hero_vy = 0;
-unsigned char hero_on = 0, hero_right = 1, hero_frm = 0;
+unsigned char hero_on = 0, hero_right = 1, hero_frm = 0, hero_moving = 0;
+unsigned char hero_inv = 0;       /* frames of invulnerability after a hit */
+unsigned char energy = 8, fire_cool = 0;
+unsigned int score = 0;
+#define ENERGY_MAX 8
 #define H_L 6
 #define H_R 17
 #define H_T 2
@@ -401,9 +416,9 @@ void update_hero(unsigned char joy) {
             blocked = 1;
         else
             hero_x = nx;
-        if (hero_on) hero_frm = (frame >> 3) & 1;
+        hero_moving = 1;
     } else {
-        hero_frm = 0;
+        hero_moving = 0;
     }
 
     /* jump: only from the ground */
@@ -412,6 +427,33 @@ void update_hero(unsigned char joy) {
         hero_on = 0;
     }
     hero_blocked = blocked;
+
+    /* the frame: jumping, running (four frames, four ticks each), or
+       standing; the left-facing set follows the right-facing one */
+    if (!hero_on)          hero_frm = SF_HERO_JUMP;
+    else if (hero_moving)  hero_frm = SF_HERO_RUN1 + ((frame >> 2) & 3);
+    else                   hero_frm = SF_HERO_STAND;
+    if (!hero_right) hero_frm += HERO_NFRM;
+
+    /* fire: a bolt from the gun, four pixels a frame, three at a time */
+    if (fire_cool) fire_cool--;
+    if (JOY_BTN_1(joy) && !fire_cool) {
+        unsigned char i;
+        for (i = SHOT0; i < NUM_OBJ; i++) if (!dr_st[i]) break;
+        if (i < NUM_OBJ) {
+            g_t = hero_x + (hero_right ? 12 : (unsigned int)-12);
+            dr_xlo[i] = g_t & 0xFF;
+            dr_xhi[i] = g_t >> 8;
+            dr_ylo[i] = hero_y & 0xFF;
+            dr_yhi[i] = hero_y >> 8;
+            dr_vx[i] = hero_right ? 4 : -4;
+            dr_life[i] = 40;
+            dr_col[i] = 7;
+            dr_ptr[i] = SPR_PTR_BASE + SF_SHOT;
+            dr_st[i] = 1;
+            fire_cool = 8;
+        }
+    }
 }
 
 /* The camera follows the hero through a dead zone: it moves only when
@@ -429,6 +471,7 @@ void camera_follow(signed char *vx, signed char *vy) {
 unsigned char ai_dir = JOY_RIGHT_MASK, ai_t = 0;
 unsigned char hero_ai(void) {
     unsigned char joy = ai_dir;
+    if ((frame & 15) < 8) joy |= JOY_BTN_1_MASK;   /* a shot every 16 frames */
     if (hero_blocked && hero_on) joy |= JOY_UP_MASK;
     if (hero_on && (rand() & 63) == 0) joy |= JOY_UP_MASK;
     if (hero_x < 48) ai_dir = JOY_RIGHT_MASK;
@@ -464,6 +507,49 @@ void put_text2(unsigned char x, unsigned char y, const char *s) {
     put_text(SCREEN_B, x, y, s);
 }
 
+/* HUD row 1: energy as yellow bars (a hires-drawn tile in yellow colour
+   RAM), score as five digits. Rewritten only when something changed. */
+#define HUD_BAR_X 7
+#define HUD_SCORE_X 28
+unsigned char hud_energy = 255;
+unsigned int hud_score = 0xFFFF;
+void draw_hud(void) {
+    unsigned char i;
+    if (energy != hud_energy) {
+        for (i = 0; i < ENERGY_MAX; i++) {
+            unsigned char c = (i < energy) ? T_BAR : 32;
+            SCREEN_A[40 + HUD_BAR_X + i] = c;
+            SCREEN_B[40 + HUD_BAR_X + i] = c;
+        }
+        hud_energy = energy;
+    }
+    if (score != hud_score) {
+        unsigned int v = score;
+        for (i = 5; i-- > 0; ) {
+            unsigned char c = 48 + v % 10;
+            v /= 10;
+            SCREEN_A[40 + HUD_SCORE_X + i] = c;
+            SCREEN_B[40 + HUD_SCORE_X + i] = c;
+        }
+        hud_score = score;
+    }
+}
+
+/* A hit: energy down, a second of blinking. At zero the hero drops back
+   in from the top of the view and everything near him is blown away. */
+void hero_hit(void) {
+    unsigned char i;
+    hero_inv = 60;
+    if (energy) energy--;
+    if (energy) return;
+    energy = ENERGY_MAX;
+    score = 0;
+    hero_x = cam_px + 150;
+    hero_y = cam_py + 8;
+    hero_vy = 0;
+    for (i = 0; i < NUM_WK; i++) if (dr_st[i] == 1) dr_st[i] = DYING;
+}
+
 /* ================= video ================= */
 
 void install_video(void) {
@@ -482,6 +568,7 @@ void install_video(void) {
     memset(SCREEN_A, 32, 1000);
     memset(SCREEN_B, 32, 1000);
     memset(COLRAM, 1, 120);                      /* HUD + spacer: hires white */
+    memset(COLRAM + 40 + HUD_BAR_X, 7, ENERGY_MAX);   /* energy: hires yellow */
 
     VIC_BG = 0;
     VIC_BORDER = 0;
@@ -494,9 +581,9 @@ void install_video(void) {
     VIC_SPR_COL(0) = 14;
     VIC_SPR_COL(1) = 7;
     for (i = 2; i < 8; i++) VIC_SPR_COL(i) = 13;
-    VIC_SPR_ENA = 0xFF;
-    SCREEN_A[0x3F8] = SPR_PTR_BASE + SF_HERO;
-    SCREEN_B[0x3F8] = SPR_PTR_BASE + SF_HERO;
+    VIC_SPR_ENA = 0xFD;                          /* sprite 1 is unused */
+    SCREEN_A[0x3F8] = SPR_PTR_BASE + SF_HERO_STAND;
+    SCREEN_B[0x3F8] = SPR_PTR_BASE + SF_HERO_STAND;
 }
 
 /* ================= frame ================= */
@@ -547,8 +634,9 @@ void main(void) {
     install_video();
     memset((void*)PROBE_BASE, 0, 32);
     POKE(MISS_COUNTER, 0);
-    put_text2(1, 0, "IRON VEIN    8-WAY ENGINE SPIKE");
-    put_text2(1, 1, "JOYSTICK 2  UP = JUMP   IDLE = DEMO");
+    put_text2(1, 0, "IRON VEIN     FIRE SHOOTS   UP JUMPS");
+    put_text2(1, 1, "ENERGY");
+    put_text2(HUD_SCORE_X - 6, 1, "SCORE");
     draw_full(SCREEN_A);
     draw_full(SCREEN_B);
     { unsigned char r; for (r = 0; r < PF_ROWS; r++) rowcol[r] = row_col[cam_cy + r]; }
@@ -624,11 +712,16 @@ void main(void) {
         /* 2. the hero: joystick, or his own autopilot when idle */
         joy = joy_read(JOY_2) | PEEK(0x033C) | PEEK(0x033E);
         POKE(0x033C, 0);                 /* $033E is a hold, $033C an edge */
-        if (!(joy & (JOY_LEFT_MASK | JOY_RIGHT_MASK | JOY_UP_MASK)))
-            joy = hero_ai();
+        if (!(joy & (JOY_LEFT_MASK | JOY_RIGHT_MASK | JOY_UP_MASK | JOY_BTN_1_MASK)))
+            joy = hero_ai();         /* any input at all silences the autopilot */
         cam_px = (unsigned int)cam_cx * 8 + fx;
         cam_py = (unsigned int)cam_cy * 8 + fy;
         update_hero(joy);
+        update_shots();
+        if (hero_inv) hero_inv--;
+        else if (hero_touch()) hero_hit();
+        if (kills) { score += 10 * kills; kills = 0; }
+        draw_hud();
         camera_follow(&vx, &vy);
         if (PEEK(0x0340)) {              /* test hook: pin the vertical
                                             fine position, freeze the camera */
@@ -652,8 +745,9 @@ void main(void) {
         PROBE(6, t0);
         set_hw_sprite(0, hero_x - cam_px + SCREEN_LEFT_X,
                       (unsigned char)(hero_y - cam_py + SCREEN_TOP_Y));
-        SCREEN_A[0x3F8] = SPR_PTR_BASE + SF_HERO;
-        SCREEN_B[0x3F8] = SPR_PTR_BASE + SF_HERO;
+        SCREEN_A[0x3F8] = SPR_PTR_BASE + hero_frm;
+        SCREEN_B[0x3F8] = SPR_PTR_BASE + hero_frm;
+        VIC_SPR_ENA = (hero_inv & 4) ? 0xFC : 0xFD;   /* blink when hit */
         { unsigned int t = NOW(); build_mux(); PROBE(7, t); }
         PROBE(2, t0);
         PROBE(3, tf);                     /* whole frame's work */

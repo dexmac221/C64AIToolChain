@@ -109,8 +109,15 @@ def main():
     p.add_argument("--colram", type=int, default=5, help="tiles, '#'")
     p.add_argument("--grid", action="store_true",
                    help="rule every cell, to count pixels by eye")
+    p.add_argument("--sprite-col", default="",
+                   help="PREFIX=col,... per-sprite colours by name prefix "
+                        "(default: GHOST KEEP's)")
     args = p.parse_args()
-    args.sprite_col = DEF_SPRITE_COL
+    if args.sprite_col:
+        args.sprite_col = [(kv.split("=")[0], int(kv.split("=")[1]))
+                           for kv in args.sprite_col.split(",")]
+    else:
+        args.sprite_col = DEF_SPRITE_COL
 
     mod = load(args.assetgen)
     items = mod.TILES if args.tiles else mod.SPRITES

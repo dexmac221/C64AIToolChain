@@ -10,17 +10,15 @@
 .export _build_mux
 .export _cam_px, _cam_py, _mux_bank
 .import _dr_xlo, _dr_xhi, _dr_ylo, _dr_yhi, _dr_vx, _dr_vy, _dr_col
+.import _dr_st, _dr_ptr
 .import _frame
 .import _mux_y, _mux_xlo, _mux_slot, _mux_slot2
 .import _mux_ptr, _mux_col, _mux_xand, _mux_xor, _mux_next
 .importzp tmp1, tmp2, tmp3, tmp4
 .macpack longbranch
 
-NUM_DRONES = 8                  ; walkers, see physics.s
+NUM_DRONES = 12                 ; walkers and shots, see physics.s
 MUX_BANK   = 32
-SPR_PTR    = 96                 ; sprite pointer base ($5800 / 64)
-SF_DRONE1  = 1
-SF_DRONE2  = 2
 SCREEN_LEFT_X = 31
 SCREEN_TOP_Y  = $56
 
@@ -37,6 +35,7 @@ s_y:    .res NUM_DRONES
 s_xlo:  .res NUM_DRONES
 s_xhi:  .res NUM_DRONES
 s_col:  .res NUM_DRONES
+s_ptr:  .res NUM_DRONES
 s_ord:  .res NUM_DRONES
 cxl:    .res 1
 cxh:    .res 1
@@ -76,6 +75,8 @@ _build_mux:
         sta n
         ldx #0
 bm_loop:
+        lda _dr_st,x
+        jeq bm_next
         ; screen y = world y - cam y, must have high byte 0 and be $40..$F0
         lda _dr_ylo,x
         sec
@@ -116,6 +117,8 @@ bm_keep:
         sta s_y,y
         lda _dr_col,x
         sta s_col,y
+        lda _dr_ptr,x
+        sta s_ptr,y
         tya
         sta s_ord,y
         inc n
@@ -161,13 +164,6 @@ srt_done:
         ; emit into the bank the IRQ is not reading. Per entry the
         ; source fields are copied to zero page first, so the loop never
         ; juggles two indices: X is the source order, Y the destination.
-        lda _frame
-        and #8
-        beq :+
-        lda #SPR_PTR+SF_DRONE1
-        bne :++
-:       lda #SPR_PTR+SF_DRONE2
-:       sta ptrval
         lda _mux_bank
         sta e
         lda #0
@@ -185,6 +181,8 @@ em_loop:
         sta tmp3
         lda s_col,y
         sta tmp4
+        lda s_ptr,y
+        sta ptrval
         lda k
         cmp #6
         bcc em_ok

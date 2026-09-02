@@ -15,13 +15,20 @@
 ; vx/vy signed bytes, on = standing on ground).
 
 .export _solid_at, _col_x, _col_y, _update_walkers
+.export _update_shots, _hero_touch
 .import _level_map, _mt_solid
 .import _dr_xlo, _dr_xhi, _dr_ylo, _dr_yhi, _dr_vx, _dr_vy, _dr_on
+.import _dr_st, _dr_ptr, _dr_life, _dr_col, _kills, _hero_x, _hero_y
 .import _spawn_walker, _frame, _cam_px, _cam_py
 .importzp ptr1, tmp1, tmp2, tmp3, tmp4
 .macpack longbranch
+.include "sprites.inc"
 
-NUM_WK   = 8
+NUM_WK   = 8                    ; objects 0..7 walk
+SHOT0    = 8                    ; objects 8..11 are the hero's shots
+NUM_OBJ  = 12
+SPR_PTR  = 96
+DYING    = 17                   ; dr_st counts down from here to 1
 BOX_L    = 6                    ; collision box inside the 24x21 sprite
 BOX_R    = 17
 BOX_T    = 2
@@ -147,6 +154,44 @@ _update_walkers:
         ldx #0
 wk_loop:
         stx tmp4
+        ; --- state: 0 inactive, 1 alive, 2..DYING an explosion
+        lda _dr_st,x
+        cmp #1
+        jeq wk_alive
+        jcc wk_next
+        dec _dr_st,x
+        lda _dr_st,x
+        cmp #1
+        bne wk_boom
+        txa
+        jsr _spawn_walker       ; the explosion is over: a new one drops in
+        jmp wk_next
+wk_boom:
+        cmp #12
+        bcs wk_boom1
+        cmp #7
+        bcs wk_boom2
+        lda #SPR_PTR+SF_BOOM3
+        jmp wk_boomset
+wk_boom2:
+        lda #SPR_PTR+SF_BOOM2
+        jmp wk_boomset
+wk_boom1:
+        lda #SPR_PTR+SF_BOOM1
+wk_boomset:
+        sta _dr_ptr,x
+        jmp wk_next
+wk_alive:
+        ; --- two-frame walk
+        lda _frame
+        and #8
+        beq wk_frm2
+        lda #SPR_PTR+SF_DRONE1
+        jmp wk_frmset
+wk_frm2:
+        lda #SPR_PTR+SF_DRONE2
+wk_frmset:
+        sta _dr_ptr,x
         ; --- gravity, every other frame, up to FALL_MAX
         lda _frame
         and #1
@@ -304,4 +349,140 @@ wk_next:
         inx
         cpx #NUM_WK
         jne wk_loop
+        rts
+
+; --------------------------------------------------------- update_shots
+; Objects SHOT0..NUM_OBJ-1: fly at dr_vx, die on a wall, when dr_life
+; runs out, or on a walker - which then explodes. The bolt is drawn on
+; rows 9-10, columns 6..13 of the sprite; a walker's box is 6..17 x
+; 2..20, so the two overlap when shot-walker is in -6..14 horizontally
+; and -8..11 vertically (shifted into 0.. for an unsigned compare).
+_update_shots:
+        ldx #SHOT0
+sh_loop:
+        stx tmp4
+        lda _dr_st,x
+        jeq sh_next
+        dec _dr_life,x
+        jeq sh_kill
+        lda _dr_vx,x
+        ADD_SIGNED _dr_xlo, _dr_xhi
+        lda #10
+        sta tmp3
+        lda #10
+        jsr probe_at
+        jne sh_kill_x
+        ldx tmp4
+        ldy #0
+sh_wk:
+        lda _dr_st,y
+        cmp #1
+        bne sh_wnext
+        lda _dr_xlo,x
+        sec
+        sbc _dr_xlo,y
+        sta dlo
+        lda _dr_xhi,x
+        sbc _dr_xhi,y
+        sta dhi
+        lda dlo
+        clc
+        adc #6
+        sta dlo
+        lda dhi
+        adc #0
+        bne sh_wnext
+        lda dlo
+        cmp #21
+        bcs sh_wnext
+        lda _dr_ylo,x
+        sec
+        sbc _dr_ylo,y
+        sta dlo
+        lda _dr_yhi,x
+        sbc _dr_yhi,y
+        sta dhi
+        lda dlo
+        clc
+        adc #8
+        sta dlo
+        lda dhi
+        adc #0
+        bne sh_wnext
+        lda dlo
+        cmp #20
+        bcs sh_wnext
+        lda #DYING              ; hit
+        sta _dr_st,y
+        lda #7                  ; the burst is yellow whatever it was
+        sta _dr_col,y
+        inc _kills
+        jmp sh_kill
+sh_wnext:
+        iny
+        cpy #NUM_WK
+        bne sh_wk
+        jmp sh_next
+sh_kill_x:
+        ldx tmp4
+sh_kill:
+        lda #0
+        sta _dr_st,x
+sh_next:
+        ldx tmp4
+        inx
+        cpx #NUM_OBJ
+        jne sh_loop
+        rts
+
+; ----------------------------------------------------------- hero_touch
+; A = 1 if a live walker's box overlaps the hero's (same box in both):
+; |dx| < 12 and |dy| < 19.
+_hero_touch:
+        ldx #0
+ht_loop:
+        lda _dr_st,x
+        cmp #1
+        bne ht_next
+        lda _hero_x
+        sec
+        sbc _dr_xlo,x
+        sta dlo
+        lda _hero_x+1
+        sbc _dr_xhi,x
+        sta dhi
+        lda dlo
+        clc
+        adc #11
+        sta dlo
+        lda dhi
+        adc #0
+        bne ht_next
+        lda dlo
+        cmp #23
+        bcs ht_next
+        lda _hero_y
+        sec
+        sbc _dr_ylo,x
+        sta dlo
+        lda _hero_y+1
+        sbc _dr_yhi,x
+        sta dhi
+        lda dlo
+        clc
+        adc #18
+        sta dlo
+        lda dhi
+        adc #0
+        bne ht_next
+        lda dlo
+        cmp #37
+        bcs ht_next
+        lda #1
+        rts
+ht_next:
+        inx
+        cpx #NUM_WK
+        bne ht_loop
+        lda #0
         rts
