@@ -212,3 +212,36 @@ the drones went by was that they "lack physicality" - weapons, a boss
 of stacked sprites, a level designed instead of generated. Each of
 those is per-object logic, and the spike's last table says exactly how
 that logic has to be written.
+
+## Day 2 — physics
+
+The human's first remark on seeing the drones: "they lack physicality".
+So: gravity first, art later.
+
+- **Hero**: gravity every other frame to a terminal speed of 4, jump
+  at -6 (42 pixels, clears a 32-pixel metatile with margin), landing
+  snapped to the tile top, head bump, walls probed at waist height. One
+  pixel a frame, which is also the camera's speed - the two never
+  disagree.
+- **Walkers** (the eight drones, now with feet): the same physics in
+  assembly, plus wall reversal, and the even-numbered ones turn at a
+  ledge instead of walking off it. They drop in from above the view.
+- **Camera**: a dead zone, 120..176 horizontally and 56..112
+  vertically; the camera moves only when the hero leaves it. That is
+  what makes the diagonal phase-alignment stall invisible - by the time
+  the camera has to move diagonally the hero has been heading that way
+  for a while.
+- **solid_at** in assembly: ~90 cycles a probe. It is the unit of cost
+  in all of this: a walker doing full physics was 1 100 cycles a frame
+  at six probes; at three (centre foot, centre head, waist wall) it is
+  about 700. Twelve-pixel objects on 32-pixel tiles do not need corner
+  probes.
+
+Budget after the cut: 0 lost frames, 36 late in 1 059 (3.4%) with the
+hero, eight walkers and the multiplexer. The prep is spread over seven
+frames now (five chunks, column edge, row edge), one to spare.
+
+Small traps: a comment tail swallowed by a text replace and assembled
+as macro arguments; the phase-align counter landing on the same address
+as a calibration slot; the monitor "clear probes" command wiping the
+calibration values, so those are only readable right after launch.

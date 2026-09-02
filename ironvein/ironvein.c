@@ -131,7 +131,7 @@ unsigned char skip_prep = 0;
 /* --- back buffer preparation --- */
 signed char prep_dx = 0, prep_dy = 0;
 unsigned char prep_step = 0;              /* 0 idle, 1-4 working, 5 ready */
-#define PREP_READY 7
+#define PREP_READY 8
 
 unsigned char frame = 0;
 unsigned int frames = 0;
@@ -219,17 +219,17 @@ void shift_chunk(unsigned char r0, unsigned char n) {
 
 void prep_run(void) {
     switch (prep_step) {
-    /* a crossing is at least eight frames away, so the copy can be
-       spread thin: four chunks, then the column edge, then the row
-       edge - six frames, two spare. The edges together on one frame
-       were the frame that ran late. */
-    case 1: shift_chunk(0, 6);  prep_step = 2; break;
-    case 2: shift_chunk(6, 6);  prep_step = 3; break;
-    case 3: shift_chunk(12, 5); prep_step = 4; break;
-    case 4: shift_chunk(17, 5); prep_step = 5; break;
-    case 5: { unsigned int t = NOW(); write_edge_col(); PROBE(5, t); }
-            prep_step = 6; break;
-    case 6: write_edge_row(); prep_step = PREP_READY; break;
+    /* a crossing is at least eight frames away, so the copy is spread
+       as thin as it goes: five chunks, the column edge, the row edge -
+       seven frames, ready with one to spare */
+    case 1: shift_chunk(0, 5);  prep_step = 2; break;
+    case 2: shift_chunk(5, 5);  prep_step = 3; break;
+    case 3: shift_chunk(10, 4); prep_step = 4; break;
+    case 4: shift_chunk(14, 4); prep_step = 5; break;
+    case 5: shift_chunk(18, 4); prep_step = 6; break;
+    case 6: { unsigned int t = NOW(); write_edge_col(); PROBE(5, t); }
+            prep_step = 7; break;
+    case 7: write_edge_row(); prep_step = PREP_READY; break;
     default: break;
     }
 }
@@ -260,7 +260,7 @@ void camera_step(signed char vx, signed char vy) {
     if (tx != 255 && ty != 255 && tx != ty) {
         if (tx < ty) { vx = 0; tx = 255; }
         else         { vy = 0; ty = 255; }
-        POKE(0x0368, PEEK(0x0368) + 1);               /* aligns */
+        POKE(0x0374, PEEK(0x0374) + 1);               /* aligns */
     }
 
     /* prepare for the nearest crossing (both axes if they coincide) */
@@ -304,50 +304,138 @@ void camera_step(signed char vx, signed char vy) {
 
 /* ================= sprites ================= */
 
-#define NUM_DRONES 8
-/* Structure of arrays, bytes only: a cc65 int inside an indexed array
-   is four runtime calls per touch. World coordinates are kept as
-   separate low and high bytes. */
-unsigned char dr_xlo[NUM_DRONES], dr_xhi[NUM_DRONES];
-unsigned char dr_ylo[NUM_DRONES], dr_yhi[NUM_DRONES];
-signed char dr_vx[NUM_DRONES], dr_vy[NUM_DRONES];
-unsigned char dr_col[NUM_DRONES];
-extern unsigned char mux_bank;
-
-/* the per-object work is assembly (actors.s); C keeps the data */
+#define NUM_WK 8
+/* Walkers: structure of arrays, bytes only. World position as lo/hi,
+   signed velocities, on = standing on ground. Their physics is in
+   physics.s; C only spawns them. */
+unsigned char dr_xlo[NUM_WK], dr_xhi[NUM_WK];
+unsigned char dr_ylo[NUM_WK], dr_yhi[NUM_WK];
+signed char dr_vx[NUM_WK], dr_vy[NUM_WK];
+unsigned char dr_on[NUM_WK], dr_col[NUM_WK];
 extern unsigned int cam_px, cam_py;
-void update_drones(void);
+extern unsigned char mux_bank;
+void update_walkers(void);
 void build_mux(void);
+extern unsigned int col_x, col_y;
+unsigned char solid_at(void);
 unsigned int g_t;
 
-void spawn_drone(unsigned char i) {
+/* A walker drops in from above the view, just outside it to one side,
+   and gravity does the rest. */
+void spawn_walker(unsigned char i) {
     unsigned char r = (unsigned char)rand();
-    g_t = cam_px + ((r & 1) ? (unsigned int)-30 : 330u);
+    g_t = cam_px + ((r & 1) ? (unsigned int)-28 : 330u);
     dr_xlo[i] = g_t & 0xFF;
     dr_xhi[i] = g_t >> 8;
-    g_t = cam_py + 20 + (r & 0x7F);
+    g_t = cam_py + (r & 0x3F);
     dr_ylo[i] = g_t & 0xFF;
     dr_yhi[i] = g_t >> 8;
-    dr_vx[i] = (r & 1) ? 1 + (r >> 6) : -1 - (r >> 6);
-    dr_vy[i] = ((r >> 2) & 3) - 1;
+    dr_vx[i] = (r & 1) ? 1 : -1;
+    dr_vy[i] = 0;
+    dr_on[i] = 0;
     dr_col[i] = (i & 1) ? 10 : 13;
 }
 
-void init_drones(void) {
+void init_walkers(void) {
     unsigned char i;
     cam_px = (unsigned int)cam_cx * 8 + fx;
     cam_py = (unsigned int)cam_cy * 8 + fy;
-    for (i = 0; i < NUM_DRONES; i++) {
-        spawn_drone(i);
-        g_t = cam_px + 20 + i * 24;               /* start on screen */
+    for (i = 0; i < NUM_WK; i++) {
+        spawn_walker(i);
+        g_t = cam_px + 40 + i * 32;             /* start on screen */
         dr_xlo[i] = g_t & 0xFF;
         dr_xhi[i] = g_t >> 8;
     }
 }
 
-/* Drones live in the WORLD: they scroll with the rock, enter and leave
-   the view, get clipped, and one that drifts far away is respawned
-   just outside the view so the multiplexer always has work. */
+/* ================= hero ================= */
+
+/* World position of the sprite's top-left; the collision box inside
+   the 24x21 sprite is columns 6..17, rows 2..20 (feet on row 20). */
+unsigned int hero_x, hero_y;
+unsigned char hero_blocked = 0;
+signed char hero_vy = 0;
+unsigned char hero_on = 0, hero_right = 1, hero_frm = 0;
+#define H_L 6
+#define H_R 17
+#define H_T 2
+#define H_B 20
+#define JUMP_V (-6)
+
+unsigned char solid(unsigned int x, unsigned int y) {
+    col_x = x;
+    col_y = y;
+    return solid_at();
+}
+
+void update_hero(unsigned char joy) {
+    unsigned char blocked = 0;
+
+    /* gravity, every other frame, terminal speed 4 */
+    if (!(frame & 1) && hero_vy < 4) hero_vy++;
+
+    /* vertical */
+    hero_y += hero_vy;
+    hero_on = 0;
+    if (hero_vy > 0) {
+        if (solid(hero_x + H_L, hero_y + H_B + 1) ||
+            solid(hero_x + H_R, hero_y + H_B + 1)) {
+            hero_y = ((hero_y + H_B + 1) & 0xFFE0) - (H_B + 1);   /* snap */
+            hero_vy = 0;
+            hero_on = 1;
+        }
+    } else if (hero_vy < 0) {
+        if (solid(hero_x + H_L, hero_y + H_T) ||
+            solid(hero_x + H_R, hero_y + H_T)) {
+            hero_y -= hero_vy;
+            hero_vy = 0;
+        }
+    }
+
+    /* horizontal, one pixel a frame, walls at knee and chest */
+    if (JOY_LEFT(joy) || JOY_RIGHT(joy)) {
+        unsigned int nx = hero_x + (JOY_RIGHT(joy) ? 1 : -1);
+        unsigned int probe = JOY_RIGHT(joy) ? nx + H_R + 1 : nx + H_L - 1;
+        hero_right = JOY_RIGHT(joy) ? 1 : 0;
+        if (solid(probe, hero_y + (H_T + H_B) / 2))
+            blocked = 1;
+        else
+            hero_x = nx;
+        if (hero_on) hero_frm = (frame >> 3) & 1;
+    } else {
+        hero_frm = 0;
+    }
+
+    /* jump: only from the ground */
+    if (JOY_UP(joy) && hero_on) {
+        hero_vy = JUMP_V;
+        hero_on = 0;
+    }
+    hero_blocked = blocked;
+}
+
+/* The camera follows the hero through a dead zone: it moves only when
+   he leaves a box in the middle of the view, one pixel a frame. */
+void camera_follow(signed char *vx, signed char *vy) {
+    int sx = (int)hero_x - (int)cam_px;    /* hero on screen, 0..319 */
+    int sy = (int)hero_y - (int)cam_py;
+    *vx = 0; *vy = 0;
+    if (sx > 176) *vx = 1; else if (sx < 120) *vx = -1;
+    if (sy > 112) *vy = 1; else if (sy < 56) *vy = -1;
+}
+
+/* Autopilot for the hero: run, jump at walls and now and then, turn
+   back at the ends of the map. */
+unsigned char ai_dir = JOY_RIGHT_MASK, ai_t = 0;
+unsigned char hero_ai(void) {
+    unsigned char joy = ai_dir;
+    if (hero_blocked && hero_on) joy |= JOY_UP_MASK;
+    if (hero_on && (rand() & 63) == 0) joy |= JOY_UP_MASK;
+    if (hero_x < 48) ai_dir = JOY_RIGHT_MASK;
+    if (hero_x > 1950) ai_dir = JOY_LEFT_MASK;
+    if (++ai_t == 0 && (rand() & 1)) ai_dir ^= JOY_LEFT_MASK | JOY_RIGHT_MASK;
+    return joy;
+}
 
 void set_hw_sprite(unsigned char spr, unsigned int x, unsigned char y) {
     VIC_SPR_X(spr) = x & 0xFF;
@@ -411,30 +499,6 @@ void install_video(void) {
     SCREEN_B[0x3F8] = SPR_PTR_BASE + SF_HERO;
 }
 
-/* ================= autopilot ================= */
-
-/* (vx, vy, frames): a route that turns, reverses, and runs diagonals
-   out of phase, because that is where the engine has to stall. */
-const signed char route[][3] = {
-    { 1, 0, 120}, { 1, 1, 90}, { 1, 0, 60}, { 0,-1, 70}, {-1,-1, 80},
-    {-1, 0, 100}, { 0, 1, 60}, { 1, 1, 100}, {-1, 1, 60}, { 1,-1, 90},
-    { 0, 0, 30}, {-1, 0, 40}, { 1, 0, 40}, {-1, 0, 8}, { 1, 0, 8},
-    {-1,-1, 120}, { 1, 0, 120}, { 0, 1, 90}, { 1, 1, 60}, { 0, 0, 0}
-};
-unsigned char route_i = 0;
-unsigned char route_t = 0;
-
-void autopilot(signed char *vx, signed char *vy) {
-    if (route_t == 0) {
-        route_i++;
-        if (route[route_i][2] == 0) route_i = 0;
-        route_t = route[route_i][2];
-    }
-    route_t--;
-    *vx = route[route_i][0];
-    *vy = route[route_i][1];
-}
-
 /* ================= frame ================= */
 
 unsigned char wait_frame(void) {
@@ -478,18 +542,19 @@ void main(void) {
     signed char vx, vy;
     unsigned char joy;
     unsigned int t0, tf;
-    int cpx, cpy;
 
     joy_install(joy_static_stddrv);
     install_video();
     memset((void*)PROBE_BASE, 0, 32);
     POKE(MISS_COUNTER, 0);
     put_text2(1, 0, "IRON VEIN    8-WAY ENGINE SPIKE");
-    put_text2(1, 1, "JOYSTICK 2 STEERS  FIRE = AUTOPILOT");
+    put_text2(1, 1, "JOYSTICK 2  UP = JUMP   IDLE = DEMO");
     draw_full(SCREEN_A);
     draw_full(SCREEN_B);
     { unsigned char r; for (r = 0; r < PF_ROWS; r++) rowcol[r] = row_col[cam_cy + r]; }
-    init_drones();
+    hero_x = (unsigned int)cam_cx * 8 + 150;
+    hero_y = (unsigned int)cam_cy * 8 + 40;
+    init_walkers();
     memset((void*)0x0368, 0, 8);
     /* an unterminated multiplexer table is walked into the rest of BSS
        and sprays whatever it finds over the VIC registers */
@@ -507,7 +572,9 @@ void main(void) {
         t = cia_now(); shift_chunk(0, 8); t -= cia_now(); POKE(0x0368, t & 0xFF); POKE(0x0369, t >> 8);
         t = cia_now(); write_edge_col(); write_edge_row(); t -= cia_now(); POKE(0x036A, t & 0xFF); POKE(0x036B, t >> 8);
         t = cia_now(); build_mux(); t -= cia_now(); POKE(0x036C, t & 0xFF); POKE(0x036D, t >> 8);
-        t = cia_now(); update_drones(); t -= cia_now(); POKE(0x036E, t & 0xFF); POKE(0x036F, t >> 8);
+        t = cia_now(); update_walkers(); t -= cia_now(); POKE(0x036E, t & 0xFF); POKE(0x036F, t >> 8);
+        t = cia_now(); update_hero(JOY_RIGHT_MASK); t -= cia_now(); POKE(0x0370, t & 0xFF); POKE(0x0371, t >> 8);
+        { signed char a, b; t = cia_now(); camera_follow(&a, &b); t -= cia_now(); POKE(0x0372, t & 0xFF); POKE(0x0373, t >> 8); }
         prep_dx = 0; prep_dy = 0;
         memset(mux_y, 0xFF, 2 * MUX_BANK);
         mux_bank = 0;
@@ -554,15 +621,15 @@ void main(void) {
             PROBE(0, t0);
         }
 
-        /* 2. steer: joystick, or the route while fire is held or idle */
+        /* 2. the hero: joystick, or his own autopilot when idle */
         joy = joy_read(JOY_2) | PEEK(0x033C) | PEEK(0x033E);
         POKE(0x033C, 0);                 /* $033E is a hold, $033C an edge */
-        vx = vy = 0;
-        if (JOY_LEFT(joy))  vx = -1;
-        if (JOY_RIGHT(joy)) vx = 1;
-        if (JOY_UP(joy))    vy = -1;
-        if (JOY_DOWN(joy))  vy = 1;
-        if (!vx && !vy) autopilot(&vx, &vy);
+        if (!(joy & (JOY_LEFT_MASK | JOY_RIGHT_MASK | JOY_UP_MASK)))
+            joy = hero_ai();
+        cam_px = (unsigned int)cam_cx * 8 + fx;
+        cam_py = (unsigned int)cam_cy * 8 + fy;
+        update_hero(joy);
+        camera_follow(&vx, &vy);
         if (PEEK(0x0340)) {              /* test hook: pin the vertical
                                             fine position, freeze the camera */
             vx = vy = 0;
@@ -581,12 +648,12 @@ void main(void) {
         t0 = NOW();
         cam_px = (unsigned int)cam_cx * 8 + fx;
         cam_py = (unsigned int)cam_cy * 8 + fy;
-        update_drones();
+        update_walkers();
         PROBE(6, t0);
-        cpx = (int)cam_cx * 8 + fx;
-        cpy = (int)cam_cy * 8 + fy;
-        set_hw_sprite(0, (unsigned int)(150 + SCREEN_LEFT_X),
-                      (unsigned char)(84 + SCREEN_TOP_Y - 10 + ((frame >> 3) & 3)));
+        set_hw_sprite(0, hero_x - cam_px + SCREEN_LEFT_X,
+                      (unsigned char)(hero_y - cam_py + SCREEN_TOP_Y));
+        SCREEN_A[0x3F8] = SPR_PTR_BASE + SF_HERO;
+        SCREEN_B[0x3F8] = SPR_PTR_BASE + SF_HERO;
         { unsigned int t = NOW(); build_mux(); PROBE(7, t); }
         PROBE(2, t0);
         PROBE(3, tf);                     /* whole frame's work */
