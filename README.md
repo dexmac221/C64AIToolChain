@@ -287,6 +287,17 @@ zombies turned out to be [the same silhouette in two
 colours](articles/ghostkeep_sprite_redraw.png), which had been mistaken for a
 scrolling problem.
 
+### `record_gif.py`
+Film a running VICE through its monitor and make a GIF. Every frame is the
+emulator's own screenshot, so nothing on top of its window gets in; between
+captures the game runs at full speed. Monitor commands can be scheduled, and
+the games' agent hooks (teleports, held joystick bits) become the script:
+
+```bash
+./record_gif.py --out ironvein/ironvein_demo.gif --seconds 36 \
+    --at "8:> 0341 02" --at "17:> 0341 03" --at "26:> 0341 04"
+```
+
 ### `screenshot.sh`
 Capture screenshots from VICE via the remote monitor. Supports multiple formats.
 
