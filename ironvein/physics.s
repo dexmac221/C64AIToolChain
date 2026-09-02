@@ -18,15 +18,16 @@
 .export _update_shots, _hero_touch
 .import _level_map, _mt_solid
 .import _dr_xlo, _dr_xhi, _dr_ylo, _dr_yhi, _dr_vx, _dr_vy, _dr_on
-.import _dr_st, _dr_ptr, _dr_life, _dr_col, _kills, _hero_x, _hero_y
+.import _dr_st, _dr_ptr, _dr_life, _dr_col, _kills, _boss_hits, _hero_x, _hero_y
 .import _spawn_walker, _frame, _cam_px, _cam_py
 .importzp ptr1, tmp1, tmp2, tmp3, tmp4
 .macpack longbranch
 .include "sprites.inc"
 
-NUM_WK   = 8                    ; objects 0..7 walk
-SHOT0    = 8                    ; objects 8..11 are the hero's shots
-NUM_OBJ  = 12
+NUM_WK   = 6                    ; objects 0..5 walk
+BOSS0    = 6                    ; 6..9 the boss's four parts (C moves them)
+SHOT0    = 10                   ; 10..13 the hero's shots
+NUM_OBJ  = 14
 SPR_PTR  = 96
 DYING    = 17                   ; dr_st counts down from here to 1
 BOX_L    = 6                    ; collision box inside the 24x21 sprite
@@ -412,15 +413,20 @@ sh_wk:
         lda dlo
         cmp #20
         bcs sh_wnext
-        lda #DYING              ; hit
+        cpy #BOSS0              ; hit: a walker explodes, the boss counts
+        bcs sh_boss
+        lda #DYING
         sta _dr_st,y
         lda #7                  ; the burst is yellow whatever it was
         sta _dr_col,y
         inc _kills
         jmp sh_kill
+sh_boss:
+        inc _boss_hits
+        jmp sh_kill
 sh_wnext:
         iny
-        cpy #NUM_WK
+        cpy #SHOT0              ; every target: walkers and boss parts
         bne sh_wk
         jmp sh_next
 sh_kill_x:
@@ -436,7 +442,7 @@ sh_next:
         rts
 
 ; ----------------------------------------------------------- hero_touch
-; A = 1 if a live walker's box overlaps the hero's (same box in both):
+; A = 1 if a live walker's or boss part's box overlaps the hero's (same box):
 ; |dx| < 12 and |dy| < 19.
 _hero_touch:
         ldx #0
@@ -482,7 +488,7 @@ ht_loop:
         rts
 ht_next:
         inx
-        cpx #NUM_WK
+        cpx #SHOT0              ; walkers and boss parts alike
         bne ht_loop
         lda #0
         rts

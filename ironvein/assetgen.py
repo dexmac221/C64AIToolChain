@@ -572,9 +572,80 @@ OTHER_SPRITES = [
     ]),
 ]
 
+# The boss: a 24 x 42 drawing (two sprites wide, two tall) split into
+# four frames, plus a second pair of leg frames. C stacks the parts at
+# fixed offsets from one origin; the multiplexer sees four objects.
+BOSS_BODY = [
+    "        ########        ",
+    "      ############      ",
+    "     ####++++++####     ",
+    "    ###+++....+++###    ",
+    "    ##++..####..++##    ",
+    "    ##+..######..+##    ",
+    "    ##++..####..++##    ",
+    "    ###+++....+++###    ",
+    "     ####++++++####     ",
+    "      ############      ",
+    "  ....############....  ",
+    "  .##################.  ",
+    " .####################. ",
+    " ######..########..#### ",
+    " #####.++.######.++.### ",
+    " ######..########..#### ",
+    " ###################### ",
+    " .####################. ",
+    "  .##################.  ",
+    "   ..############..     ",
+    "   .###..######..###.   ",
+]
+BOSS_LEGS1 = [
+    "   ####  ######  ####   ",
+    "  ####   ######   ####  ",
+    "  ###    ######    ###  ",
+    " ###     ######     ### ",
+    " ###     ######     ### ",
+    " ##      .####.      ## ",
+    " ##      ......      ## ",
+    "##       ......       ##",
+    "##                    ##",
+    "##                    ##",
+    "##                    ##",
+    "##                    ##",
+    "##.                  .##",
+    "...                  ...",
+]
+BOSS_LEGS2 = [
+    "   ####  ######  ####   ",
+    "  ####   ######   ####  ",
+    " ####    ######    #### ",
+    "####     ######     ####",
+    "##       ######       ##",
+    "##       .####.       ##",
+    "##       ......       ##",
+    "##.      ......      .##",
+    "...                  ...",
+]
+
+
+def split_boss(body, legs):
+    block = [r.ljust(24) for r in body + legs]
+    block += ["            " * 2] * (42 - len(block))
+    assert len(block) == 42 and all(len(r) == 24 for r in block)
+    tl = [r[:12] for r in block[:21]]
+    tr = [r[12:] for r in block[:21]]
+    bl = [r[:12] for r in block[21:]]
+    br = [r[12:] for r in block[21:]]
+    return tl, tr, bl, br
+
+
+_tl, _tr, _bl1, _br1 = split_boss(BOSS_BODY, BOSS_LEGS1)
+_, _, _bl2, _br2 = split_boss(BOSS_BODY, BOSS_LEGS2)
+BOSS_SPRITES = [("BOSS_TL", _tl), ("BOSS_TR", _tr), ("BOSS_BL", _bl1),
+                ("BOSS_BR", _br1), ("BOSS_BL2", _bl2), ("BOSS_BR2", _br2)]
+
 SPRITES = ([("HERO_" + n, r) for n, r in HERO_FRAMES]
            + [("HEROL_" + n, mirror(r)) for n, r in HERO_FRAMES]
-           + OTHER_SPRITES)
+           + OTHER_SPRITES + BOSS_SPRITES)
 
 
 def pack_mc_tile(rows):

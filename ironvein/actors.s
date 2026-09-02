@@ -17,7 +17,7 @@
 .importzp tmp1, tmp2, tmp3, tmp4
 .macpack longbranch
 
-NUM_DRONES = 12                 ; walkers and shots, see physics.s
+NUM_DRONES = 14                 ; walkers, boss parts, shots: see physics.s
 MUX_BANK   = 32
 SCREEN_LEFT_X = 31
 SCREEN_TOP_Y  = $56

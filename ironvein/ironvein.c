@@ -27,7 +27,7 @@
  *   $033D missed frames
  *   $0350/1 $0352/3 $0354/5 $0356/7  worst cycles: fill, camera+prep,
  *                                    actors+mux, whole frame (16-bit)
- *   $0358/9 drones only   $035A/B write_edges only
+ *   $0358/9 game logic (hero, boss, shots, HUD)   $035A/B write_edges only
  *   $035C/D self-test: 200 empty loop turns   $035E/F self-test: nothing
  *   $0360 stalls  $0361 crossings  $0362/3 frames
  *
@@ -305,12 +305,16 @@ void camera_step(signed char vx, signed char vy) {
 
 /* ================= sprites ================= */
 
-#define NUM_WK 8
-#define SHOT0 8
-#define NUM_OBJ 12
+#define NUM_WK 6
+#define BOSS0 6
+#define SHOT0 10
+#define NUM_OBJ 14
 #define DYING 17
-/* Objects: structure of arrays, bytes only. 0..7 are walkers, 8..11 the
-   hero's shots. World position as lo/hi, signed velocities, on =
+/* Objects: structure of arrays, bytes only. 0..5 are walkers, 6..9 the
+   boss's four parts, 10..13 the hero's shots. Eight walkers plus shots,
+   boss and contact tests ran the frame over budget on most frames of
+   the plateau (62% late); the spike's verdict was "eight objects yes,
+   twelve no" and the game had crept to eleven. World position as lo/hi, signed velocities, on =
    standing on ground, st = 0 free / 1 alive / 2..DYING exploding,
    ptr = sprite pointer, life = frames left (shots). All of their
    per-frame logic is in physics.s; C only spawns them. */
@@ -320,6 +324,7 @@ signed char dr_vx[NUM_OBJ], dr_vy[NUM_OBJ];
 unsigned char dr_on[NUM_OBJ], dr_col[NUM_OBJ];
 unsigned char dr_st[NUM_OBJ], dr_ptr[NUM_OBJ], dr_life[NUM_OBJ];
 unsigned char kills = 0;                 /* bumped by update_shots */
+unsigned char boss_hits = 0;             /* likewise, shots on the boss */
 extern unsigned int cam_px, cam_py;
 extern unsigned char mux_bank;
 void update_walkers(void);
@@ -332,8 +337,17 @@ unsigned int g_t;
 
 /* A walker drops in from above the view, just outside it to one side,
    and gravity does the rest. */
+/* The arena at the bottom right belongs to the boss: no walker spawns
+   while the hero is near it, and the ones that leave stay gone until
+   he comes back out (respawn tick in the main loop). */
+extern unsigned int hero_x, hero_y;
+unsigned char near_arena(void) {
+    return hero_x > 1250 && hero_y > 700;
+}
+
 void spawn_walker(unsigned char i) {
     unsigned char r = (unsigned char)rand();
+    if (near_arena()) { dr_st[i] = 0; return; }
     g_t = cam_px + ((r & 1) ? (unsigned int)-28 : 330u);
     dr_xlo[i] = g_t & 0xFF;
     dr_xhi[i] = g_t >> 8;
@@ -370,7 +384,26 @@ signed char hero_vy = 0;
 unsigned char hero_on = 0, hero_right = 1, hero_frm = 0, hero_moving = 0;
 unsigned char hero_inv = 0;       /* frames of invulnerability after a hit */
 unsigned char energy = 8, fire_cool = 0;
-unsigned int score = 0;
+/* The score lives as five decimal digits: cc65's 16-bit division costs
+   ~700 cycles and the HUD needed ten of them on every kill - 8 000
+   cycles, a frame lost each time the player did well. A digit-wise
+   add with carry is fifty. */
+unsigned char score_d[5] = { 0, 0, 0, 0, 0 };   /* most significant first */
+unsigned char score_dirty = 1;
+void add_score(unsigned char digit, unsigned char n) {
+    score_dirty = 1;
+    while (n--) {
+        unsigned char d = digit;
+        for (;;) {
+            if (++score_d[d] < 10) break;
+            score_d[d] = 0;
+            if (d == 0) break;
+            d--;
+        }
+    }
+}
+#define SCORE_TENS 3
+#define SCORE_HUNDREDS 2
 #define ENERGY_MAX 8
 #define H_L 6
 #define H_R 17
@@ -513,7 +546,6 @@ void put_text2(unsigned char x, unsigned char y, const char *s) {
 #define HUD_BAR_X 7
 #define HUD_SCORE_X 28
 unsigned char hud_energy = 255;
-unsigned int hud_score = 0xFFFF;
 void draw_hud(void) {
     unsigned char i;
     if (energy != hud_energy) {
@@ -524,15 +556,13 @@ void draw_hud(void) {
         }
         hud_energy = energy;
     }
-    if (score != hud_score) {
-        unsigned int v = score;
-        for (i = 5; i-- > 0; ) {
-            unsigned char c = 48 + v % 10;
-            v /= 10;
+    if (score_dirty) {
+        for (i = 0; i < 5; i++) {
+            unsigned char c = 48 + score_d[i];
             SCREEN_A[40 + HUD_SCORE_X + i] = c;
             SCREEN_B[40 + HUD_SCORE_X + i] = c;
         }
-        hud_score = score;
+        score_dirty = 0;
     }
 }
 
@@ -544,11 +574,127 @@ void hero_hit(void) {
     if (energy) energy--;
     if (energy) return;
     energy = ENERGY_MAX;
-    score = 0;
+    memset(score_d, 0, 5);
+    score_dirty = 1;
     hero_x = cam_px + 150;
     hero_y = cam_py + 8;
     hero_vy = 0;
-    for (i = 0; i < NUM_WK; i++) if (dr_st[i] == 1) dr_st[i] = DYING;
+    /* staggered countdowns: eight respawns in one frame cost 5 000 cycles */
+    for (i = 0; i < NUM_WK; i++) if (dr_st[i] == 1) dr_st[i] = DYING - i;
+}
+
+/* ================= boss ================= */
+
+/* A mech of four stacked sprites pacing the arena floor, jumping toward
+   the hero every so often. Contact hurts, every shot on any part is a
+   hit point; at zero the four parts burst for a second. One object as
+   far as C is concerned, four as far as the multiplexer is. */
+#define BOSS_X0 1456
+#define BOSS_X1 1880
+#define BOSS_FLOOR_Y 894          /* origin y with the feet on row 29's top */
+#define BOSS_HP 24
+unsigned int boss_x = 1720, boss_y = BOSS_FLOOR_Y;
+signed char boss_vx = -1, boss_vy = 0;
+unsigned char boss_hp = BOSS_HP, boss_flash = 0, boss_t = 0, boss_on = 0;
+unsigned char boss_dead = 0;      /* 0 alive, 255 gone, else burst countdown */
+const unsigned char boss_ox[4] = { 0, 24, 0, 24 };
+const unsigned char boss_oy[4] = { 0, 0, 21, 21 };
+
+void place_boss(unsigned char st) {
+    unsigned char i;
+    for (i = 0; i < 4; i++) {
+        unsigned char o = BOSS0 + i;
+        g_t = boss_x + boss_ox[i];
+        dr_xlo[o] = g_t & 0xFF;
+        dr_xhi[o] = g_t >> 8;
+        g_t = boss_y + boss_oy[i];
+        dr_ylo[o] = g_t & 0xFF;
+        dr_yhi[o] = g_t >> 8;
+        dr_st[o] = st;
+    }
+}
+
+void update_boss(void) {
+    unsigned char i;
+    if (boss_dead == 255) return;
+    if (boss_dead) {                       /* bursting; state 2 hits nothing */
+        unsigned char f = SF_BOOM1 + ((48 - boss_dead) >> 4);
+        for (i = 0; i < 4; i++) {
+            dr_ptr[BOSS0 + i] = SPR_PTR_BASE + f;
+            dr_col[BOSS0 + i] = 7;
+        }
+        if (--boss_dead == 0) {
+            for (i = 0; i < 4; i++) dr_st[BOSS0 + i] = 0;
+            boss_dead = 255;
+        }
+        return;
+    }
+    if (!near_arena()) {                   /* waits, unseen */
+        for (i = 0; i < 4; i++) dr_st[BOSS0 + i] = 0;
+        return;
+    }
+    if (boss_hits) {
+        boss_flash = 4;
+        if (boss_hp > boss_hits) boss_hp -= boss_hits;
+        else { boss_hp = 0; boss_dead = 48; add_score(SCORE_HUNDREDS, 5); place_boss(2); return; }
+        boss_hits = 0;
+    }
+    if (boss_flash) boss_flash--;
+
+    if (!(frame & 1) && boss_vy < 4) boss_vy++;
+    boss_y += boss_vy;
+    boss_on = 0;
+    if (boss_y >= BOSS_FLOOR_Y) { boss_y = BOSS_FLOOR_Y; boss_vy = 0; boss_on = 1; }
+    boss_x += boss_vx;
+    if (boss_x <= BOSS_X0) boss_vx = 1;
+    if (boss_x >= BOSS_X1) boss_vx = -1;
+    if (boss_on && ++boss_t >= 90) {       /* a leap toward the hero */
+        boss_t = 0;
+        boss_vy = -7;
+        boss_vx = (hero_x > boss_x) ? 1 : -1;
+    }
+    place_boss(1);
+    for (i = 0; i < 4; i++) {
+        unsigned char f = SF_BOSS_TL + i;
+        if (i >= 2 && (frame & 8)) f += 2;   /* the legs' second frame */
+        dr_ptr[BOSS0 + i] = SPR_PTR_BASE + f;
+        dr_col[BOSS0 + i] = boss_flash ? 1 : 8;
+    }
+}
+
+/* ================= camera relocation ================= */
+
+/* Put the camera where its dead zone would have it for the hero and
+   redraw everything: at the start, and on the $0341 teleport hook. */
+void relocate(void) {
+    unsigned char r;
+    int px = (int)hero_x - 150, py = (int)hero_y - 80;
+    if (px < 0) px = 0;
+    if (px > MAP_W * 32 - 320) px = MAP_W * 32 - 320;
+    if (py < 0) py = 0;
+    if (py > MAP_H * 32 - PF_ROWS * 8) py = MAP_H * 32 - PF_ROWS * 8;
+    cam_cx = px >> 3; fx = px & 7;
+    cam_cy = py >> 3; fy = py & 7;
+    draw_full(SCREEN_A);
+    draw_full(SCREEN_B);
+    for (r = 0; r < PF_ROWS; r++) rowcol[r] = row_col[cam_cy + r];
+    prep_step = 0;
+    fill_pending = 0;
+    finex_next = 7 - fx;
+    finey_next = (6 - fy) & 7;
+    cam_px = (unsigned int)cam_cx * 8 + fx;
+    cam_py = (unsigned int)cam_cy * 8 + fy;
+}
+
+/* $0341 = n: drop the hero at spot n (1 plateau, 2 crystal cave, 3 hall,
+   4 the arena). For tests and for filming. */
+const unsigned int spot_x[5] = { 0, HERO_START_X, 200, 300, 1500 };
+const unsigned int spot_y[5] = { 0, HERO_START_Y, 427, 683, 907 };
+void teleport(unsigned char n) {
+    hero_x = spot_x[n];
+    hero_y = spot_y[n];
+    hero_vy = 0;
+    relocate();
 }
 
 /* ================= video ================= */
@@ -638,11 +784,9 @@ void main(void) {
     put_text2(1, 0, "IRON VEIN     FIRE SHOOTS   UP JUMPS");
     put_text2(1, 1, "ENERGY");
     put_text2(HUD_SCORE_X - 6, 1, "SCORE");
-    draw_full(SCREEN_A);
-    draw_full(SCREEN_B);
-    { unsigned char r; for (r = 0; r < PF_ROWS; r++) rowcol[r] = row_col[cam_cy + r]; }
     hero_x = HERO_START_X;
     hero_y = HERO_START_Y;
+    relocate();
     init_walkers();
     memset((void*)0x0368, 0, 8);
     /* an unterminated multiplexer table is walked into the rest of BSS
@@ -717,13 +861,26 @@ void main(void) {
             joy = hero_ai();         /* any input at all silences the autopilot */
         cam_px = (unsigned int)cam_cx * 8 + fx;
         cam_py = (unsigned int)cam_cy * 8 + fy;
+        t0 = NOW();
         update_hero(joy);
+        update_boss();
         update_shots();
         if (hero_inv) hero_inv--;
         else if (hero_touch()) hero_hit();
-        if (kills) { score += 10 * kills; kills = 0; }
+        if (kills) { add_score(SCORE_TENS, kills); kills = 0; }
         draw_hud();
         camera_follow(&vx, &vy);
+        PROBE(4, t0);                     /* the game's own logic */
+        if (PEEK(0x0341)) {              /* teleport hook */
+            teleport(PEEK(0x0341) & 7);
+            POKE(0x0341, 0);
+            continue;
+        }
+        if (!(frame & 31) && !near_arena()) {   /* walkers that stayed away */
+            unsigned char i;
+            for (i = 0; i < NUM_WK; i++)
+                if (!dr_st[i]) { spawn_walker(i); break; }
+        }
         if (PEEK(0x0340)) {              /* test hook: pin the vertical
                                             fine position, freeze the camera */
             vx = vy = 0;

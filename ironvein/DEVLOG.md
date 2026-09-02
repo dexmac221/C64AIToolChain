@@ -327,3 +327,56 @@ walkers explode and respawn within a few frames of each other; not
 chased. The autopilot died once in eighty seconds - eight walkers
 dropping in from the sides are more than a hero who never dodges can
 take. That is the game's problem now, not the engine's.
+
+## Day 5 — the boss
+
+A mech of four sprites: a 24 x 42 drawing in assetgen.py cut into
+top-left, top-right, bottom-left, bottom-right, plus a second pair of
+leg frames. To C it is one thing - an origin, a velocity, hit points -
+and to the multiplexer it is four objects at fixed offsets from that
+origin, indices 8..11 between the walkers and the shots. Nothing in
+the assembly knows the word boss: the shot test covers "every target
+below the first shot", the contact test the same, and the only branch
+is which counter a hit bumps - a walker explodes, the boss loses a hit
+point and flashes white for four frames.
+
+It paces the arena floor, and every ninety frames on the ground it
+leaps toward the hero. It has no tile collision of its own: the arena
+floor is a constant, because the arena was drawn for it. Twenty-four
+hits and the four parts burst for a second; five hundred points.
+
+The arena is the boss's alone. While the hero is near it no walker
+spawns and the ones that wander off stay gone; back outside, a
+respawn tick brings one back every 32 frames. That keeps the
+multiplexer at four boss parts plus shots in the fight, and it is
+also why the fight reads as a fight and not as a crowd.
+
+A teleport hook ($0341 = spot) drops the hero at the plateau, the
+cave, the hall or the arena entrance and relocates the camera with a
+full redraw. It is a test hook today and the film crew tomorrow.
+
+### What the profiler said, and the two cheap fixes
+
+The boss build lost 116 frames in a minute. The profile build (one
+run, worst cycles per phase) named the culprits:
+
+- **the HUD**: on every kill the score went through ten 16-bit
+  divisions - cc65's `udiv` is ~700 cycles - so doing well cost the
+  player 8 000 cycles and a lost frame. The score is five decimal
+  digits now, incremented with a ripple carry: fifty cycles.
+- **eight respawns in one frame**: a death sets every walker
+  exploding with the same countdown, so sixteen frames later eight
+  spawns (rand, 16-bit maths, the arena test) landed together, 5 000
+  cycles. The countdowns are staggered by one frame each.
+- **the frame itself**: with eight walkers on the plateau plus shots,
+  boss, contact tests and HUD, the loop ran just over one frame on
+  most frames - 62% late, almost none lost, which is what "1.02
+  frames each" looks like in those two counters. The spike said eight
+  objects fit and twelve did not; the game had crept to eleven (eight
+  walkers, two or three shots) without anyone deciding it. Six
+  walkers, then: the object count is a budget line, not a default.
+
+Measured once more, six walkers, ship build: plateau 1 057 frames,
+0 lost, 56 late (5.3%); arena 1 111 frames, 0 lost, 50 late (4.5%).
+The autopilot kills the boss in about twenty seconds and usually dies
+once doing it.
