@@ -2,7 +2,7 @@
 
 **C64AIToolChain** is a Commodore 64 development toolchain designed as a **creative benchmark for AI agents**. An agent is dropped into this workspace with a cross-compiler, an emulator it can drive through a socket, and a set of rules, and is asked to design, build, play-test and ship games for a 1982 computer — C and 6502 assembly, 64 KB, no debugger but the one it writes itself.
 
-**Tested with:** **Google Gemini 3** · **Claude Opus 4.6** (GitHub Copilot in VS Code) · **Claude Fable / Fable 5.1** (Claude Code)
+**Tested with:** **Google Gemini 3** · **Claude Sonnet 4.5 / 4.6** · **Claude Opus 4.5 / 4.6** (GitHub Copilot, Cursor) · **Claude Fable 5** · **Claude Fable 5.1** (Claude Code)
 
 ### How It Works as a Benchmark
 
@@ -14,7 +14,7 @@ The agent is given the workspace and asked to:
 
 This tests sustained, multi-domain autonomous problem-solving: game design, systems programming, hardware constraints, memory layout, measurement, visual debugging, and iterative refinement — over sessions that last days. Unlike benchmarks such as ARC-AGI (pattern recognition), SWE-bench (isolated bug fixes), or HumanEval (function-level generation), this measures an agent's ability to **hold a complex constrained system in context and ship a working product**, and to say honestly, with numbers, when it has not.
 
-Three generations of work live here, and the showcase below runs newest first: the **Claude Code** games (IRON VEIN, GHOST KEEP, ION RIFT, Boulder Rush, Sky Miner), where the agent also built its own measurement and testing tools; the **Copilot** originals (METEOR STORM, Dreadline); and the **classic clones** that started it all (Space Invaders, Arkanoid, Pac-Man, Snake, Tetris…).
+Several generations of models have worked here, and the showcase below runs newest first: **Fable 5.1** on IRON VEIN and **Fable 5** on ION RIFT, GHOST KEEP and Boulder Rush, both in Claude Code, where the agent also built its own measurement and testing tools; the **Opus 4.6** originals in Copilot (METEOR STORM), Sonnet and Opus 4.x on the mid-period games; and the **Gemini 3** and **Sonnet 4.5** clones that started it all (Space Invaders, Arkanoid, Pac-Man, Snake, Tetris…).
 
 > **All `.prg` files are included pre-compiled** — load them directly in VICE without needing cc65.
 
@@ -32,7 +32,7 @@ An 8-way scrolling action demo in the Turrican class, built spike-first: the eng
 
 ---
 
-### 🏰 GHOST KEEP — *Claude Code (Fable)*
+### 🏰 GHOST KEEP — *Claude Code (Fable 5)*
 
 <p align="center">
   <img src="ghosts/ghostkeep_demo.gif" alt="GHOST KEEP demo" width="480">
@@ -42,7 +42,7 @@ A Ghosts 'n Goblins tribute on the ION RIFT engine: a smooth-scrolling graveyard
 
 ---
 
-### 🌌 ION RIFT — *Claude Code (Fable)*
+### 🌌 ION RIFT — *Claude Code (Fable 5)*
 
 <p align="center">
   <img src="ionrift/ionrift_gameplay.png" alt="ION RIFT gameplay" width="480">
@@ -52,7 +52,7 @@ A horizontally scrolling shoot-em-up built to go one step past Dreadline: pixel-
 
 ---
 
-### 💎 Boulder Rush — *Claude Code (Fable)*
+### 💎 Boulder Rush — *Claude Code (Fable 5)*
 
 <p align="center">
   <img src="boulderdash/demo_bot_playing.png" alt="Boulder Rush played by its autonomous bot" width="480">
@@ -62,7 +62,7 @@ A Boulder Dash tribute with authentic cave physics: boulders and gems fall, roll
 
 ---
 
-### 🚀 Dreadline — *Claude Opus 4.6*
+### 🚀 Dreadline — *April 2026*
 
 <p align="center">
   <img src="screenshots/dreadline.png" alt="Dreadline Screenshot" width="480">
@@ -132,12 +132,12 @@ The original proof-of-concept game for this toolchain. Written in 6502 Assembly 
 
 | Game | Directory | Description |
 |------|-----------|-------------|
-| **Sky Miner** | `sky_miner/` | Original: catch crystals, dodge meteors, sprite-based, demo mode (Claude Code) |
-| **Frogger** | `frogger/` | The arcade classic in multicolour bitmap mode, cc65 |
+| **Sky Miner** | `sky_miner/` | Original: catch crystals, dodge meteors, sprite-based, demo mode (April 2026) |
+| **Frogger** | `frogger/` | The arcade classic in multicolour bitmap mode, cc65 (Claude Sonnet 4.6 in Cursor) |
 | **Snake 2** | `snake2/` | Snake rebuilt on hardware sprites, 6502 assembly |
-| **Tetris** | `tetris_v1/`, `tetris_v2/` | Two versions of the classic block puzzle — the "Tetris test" of the first articles |
-| **Pong** | `pong/` | Classic two-paddle game |
-| **Breakout** | `breakout/` | Brick-breaking game |
+| **Tetris** | `tetris_v1/`, `tetris_v2/` | The "Tetris test" of the first articles: v1 by Claude Sonnet 4.5, v2 by Gemini 3; compared in [AI_COMPARISON.md](AI_COMPARISON.md) |
+| **Pong** | `pong/` | Classic two-paddle game (Claude Opus 4.5) |
+| **Breakout** | `breakout/` | Brick-breaking game (Claude Opus 4.5) |
 | **Bounce** | `bounce/` | Ball bouncing demo |
 | **Plasma** | `plasma/` | Classic plasma effect demo |
 | **Starfield** | `starfield/` | Scrolling star parallax effect |
@@ -177,10 +177,12 @@ Two loops, then. The **development loop** — edit, build, reload, look — is w
 ## The Stack
 
 - **AI Models (tested)**:
-  - **Google Gemini 3** — the classic clones (Space Invaders, Arkanoid, Pac-Man, Pong, Tetris…)
-  - **Claude Opus 4.6** (GitHub Copilot in VS Code) — original games (METEOR STORM, Dreadline), autonomous debugging including memory-layout fixes
-  - **Claude Fable and Fable 5.1** (Claude Code) — the scrolling engines (ION RIFT, GHOST KEEP, IRON VEIN), Boulder Rush and its bot, and the measurement and art tools below
-- **Agent harness**: Claude Code (terminal or VS Code extension); GitHub Copilot agent mode for the earlier work
+  - **Google Gemini 3** — the classic clones (Space Invaders, Arkanoid, Pac-Man, Snake, Tetris v2)
+  - **Claude Sonnet 4.5 / 4.6** — Tetris v1, Frogger
+  - **Claude Opus 4.5 / 4.6** (GitHub Copilot in VS Code) — Pong, Breakout, then the original METEOR STORM with its autonomous debugging including memory-layout fixes
+  - **Claude Fable 5** (Claude Code) — ION RIFT, GHOST KEEP, Boulder Rush and its bot, the asset tools
+  - **Claude Fable 5.1** (Claude Code) — IRON VEIN, the profiling and filming tools
+- **Agent harness**: Claude Code (terminal or VS Code extension) for the 2026 summer work; GitHub Copilot agent mode and Cursor earlier
 - **Compiler**: `cc65` (6502/6510 cross-compiler, C and assembly; `-Or` puts `register` pointers in zero page, which matters)
 - **Emulator**: `VICE` (`x64`, tested with 3.7.1) in remote monitor mode on port 6510
 - **VLM**: Ollama with a local vision model — `gemma4:12b-it-qat` at the time of writing (`qwen3-vl` and its cloud variant are retired; pass `-m` or set `OLLAMA_MODEL`). Its reading of C64 text is unreliable, so the agent cross-checks against screen RAM.
