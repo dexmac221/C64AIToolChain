@@ -1,23 +1,78 @@
 # C64AIToolChain
 
-**C64AIToolChain** is a Commodore 64 development toolchain designed as a **creative benchmark for AI agents**. It uses AI models inside **Visual Studio Code with GitHub Copilot** (agent mode) to develop C and assembly games for the Commodore 64.
+**C64AIToolChain** is a Commodore 64 development toolchain designed as a **creative benchmark for AI agents**. An agent is dropped into this workspace with a cross-compiler, an emulator it can drive through a socket, and a set of rules, and is asked to design, build, play-test and ship games for a 1982 computer — C and 6502 assembly, 64 KB, no debugger but the one it writes itself.
 
-**Tested with:** **Google Gemini 3** · **Claude Opus 4.6**
+**Tested with:** **Google Gemini 3** · **Claude Opus 4.6** (GitHub Copilot in VS Code) · **Claude Fable / Fable 5.1** (Claude Code)
 
 ### How It Works as a Benchmark
 
-The agent is given access to the workspace via GitHub Copilot in VS Code and asked to:
-1. **Analyze** the project structure, existing games, and development rules (`AGENT_RULES.md`, `AGENT_HOWTO.md`)
-2. **Understand** the constraints (6502 CPU, 64KB RAM, VIC-II, SID, cc65 compiler)
-3. **Generate a game** — either a classic clone or, for the creative benchmark, an entirely **new original game** by combining mechanics from existing ones
+The agent is given the workspace and asked to:
+1. **Analyze** the project structure, the existing games, and the development rules (`AGENT_RULES.md`, `AGENT_HOWTO.md`)
+2. **Understand** the constraints (6502 CPU, 64 KB RAM, VIC-II, SID, the cc65 compiler and what it does to byte arithmetic)
+3. **Build a game** — a classic clone, an original that combines mechanics from existing ones, or, at the top of the ladder, a scrolling engine that must prove itself with a profiler before a tile is drawn
+4. **Test it** the way a player would — by looking (a local VLM, magnified asset sheets), by reading (screen RAM, counters written to RAM), and by playing (demo bots and autopilots that steer the game through a memory-mapped input byte)
 
-This tests sustained, multi-domain autonomous problem-solving: game design, systems programming, hardware constraints, memory layout, visual debugging, and iterative refinement — all in a single unbroken session. Unlike benchmarks such as ARC-AGI (pattern recognition), SWE-bench (isolated bug fixes), or HumanEval (function-level generation), this measures an agent's ability to **hold a complex constrained system in context and ship a working product**.
+This tests sustained, multi-domain autonomous problem-solving: game design, systems programming, hardware constraints, memory layout, measurement, visual debugging, and iterative refinement — over sessions that last days. Unlike benchmarks such as ARC-AGI (pattern recognition), SWE-bench (isolated bug fixes), or HumanEval (function-level generation), this measures an agent's ability to **hold a complex constrained system in context and ship a working product**, and to say honestly, with numbers, when it has not.
+
+Three generations of work live here, and the showcase below runs newest first: the **Claude Code** games (IRON VEIN, GHOST KEEP, ION RIFT, Boulder Rush, Sky Miner), where the agent also built its own measurement and testing tools; the **Copilot** originals (METEOR STORM, Dreadline); and the **classic clones** that started it all (Space Invaders, Arkanoid, Pac-Man, Snake, Tetris…).
 
 > **All `.prg` files are included pre-compiled** — load them directly in VICE without needing cc65.
 
 ---
 
 ## 🎮 Game Showcase
+
+### ⛏️ IRON VEIN — *Claude Code (Fable 5.1)*
+
+<p align="center">
+  <img src="ironvein/ironvein_demo.gif" alt="IRON VEIN demo" width="480">
+</p>
+
+An 8-way scrolling action demo in the Turrican class, built spike-first: the engine was profiled until it said 50 fps before a tile was drawn. Double-buffered screen RAM with colour per world row (colour RAM cannot be double-buffered, so the art direction follows the engine), a commit-and-stall camera that prepares the shifted buffer over seven frames, a HUD/playfield split verified in all eight fine-scroll phases, a double-banked sprite multiplexer, and every per-object routine in assembly after cc65 measured four times slower. Gravity, a hero with twelve frames, shots, a designed 64×32 level, a four-sprite boss, energy and score, and an object budget found the hard way: eight enemies ran the frame 62% late, six run it clean. The diary with every dead end is [ironvein/DEVLOG.md](ironvein/DEVLOG.md); the article is [articles/IRONVEIN_8WAY.md](articles/IRONVEIN_8WAY.md).
+
+---
+
+### 🏰 GHOST KEEP — *Claude Code (Fable)*
+
+<p align="center">
+  <img src="ghosts/ghostkeep_demo.gif" alt="GHOST KEEP demo" width="480">
+</p>
+
+A Ghosts 'n Goblins tribute on the ION RIFT engine: a smooth-scrolling graveyard with a ragged ridge on the horizon, a knight with the arcade's rigid jump arc and a lance, zombies that rise out of the ground and walk past instead of parking inside the hero, crows, a title screen and an attract-mode demo. Its sprites are where [assetsheet.py](#assetsheetpy) paid for itself. Notes and open items in [ghosts/README.md](ghosts/README.md).
+
+---
+
+### 🌌 ION RIFT — *Claude Code (Fable)*
+
+<p align="center">
+  <img src="ionrift/ionrift_gameplay.png" alt="ION RIFT gameplay" width="480">
+</p>
+
+A horizontally scrolling shoot-em-up built to go one step past Dreadline: pixel-smooth `$D016` scrolling at 50 fps, a two-interrupt raster split (steady HUD above a scrolling playfield), double-buffered screen RAM flipped in the IRQ, procedural multicolor terrain generated column by column, a unified `assetgen.py` tile+sprite pipeline, and a two-voice SID music engine with a dedicated sfx voice. Write-up: [articles/FABLE_BENCHMARK.md](articles/FABLE_BENCHMARK.md)
+
+---
+
+### 💎 Boulder Rush — *Claude Code (Fable)*
+
+<p align="center">
+  <img src="boulderdash/demo_bot_playing.png" alt="Boulder Rush played by its autonomous bot" width="480">
+</p>
+
+A Boulder Dash tribute with authentic cave physics: boulders and gems fall, roll off rounded objects, and are deadly only while falling. Custom charset, seeded procedural caves, SID sfx — and a new benchmark dimension: `demo_bot.py` plays the game autonomously, reading the cave from screen RAM through the VICE monitor, planning with weighted BFS, and steering through the edge-triggered agent input byte at `$033C`.
+
+---
+
+### 🚀 Dreadline — *Claude Opus 4.6*
+
+<p align="center">
+  <img src="screenshots/dreadline.png" alt="Dreadline Screenshot" width="480">
+</p>
+
+An original low-altitude attack game inspired by the feel of Uridium-style dreadnought runs, built as a mixed C and 6502 assembly project. Dreadline combines hardware sprites, generated multicolor sprite art, a bitmap-authored hi-res custom character deck, and an assembly row scroller to keep the background moving smoothly on a stock C64.
+
+The asset pipeline is part of the experiment: `spritegen.py` converts editable ASCII art into C64 multicolor sprites, while `bggen.py` turns `deck_bitmap.pgm` into a deduplicated custom charset plus screen and color maps. Dreadline is also the test bed for the [System 1 / System 2 agent control loop](#async_agent_controlpy). Full write-up: [articles/DREADLINE.md](articles/DREADLINE.md)
+
+---
 
 ### ☄️ METEOR STORM — *AI Original (Claude Opus 4.6)*
 
@@ -33,49 +88,7 @@ The agent autonomously found and fixed 7 bugs, including a critical memory layou
 
 ---
 
-### 🚀 Dreadline
-
-<p align="center">
-  <img src="screenshots/dreadline.png" alt="Dreadline Screenshot" width="480">
-</p>
-
-An original low-altitude attack game inspired by the feel of Uridium-style dreadnought runs, built as a mixed C and 6502 assembly project. Dreadline combines hardware sprites, generated multicolor sprite art, a bitmap-authored hi-res custom character deck, and an assembly row scroller to keep the background moving smoothly on a stock C64.
-
-The asset pipeline is part of the experiment: `spritegen.py` converts editable ASCII art into C64 multicolor sprites, while `bggen.py` turns `deck_bitmap.pgm` into a deduplicated custom charset plus screen and color maps. Full write-up: [articles/DREADLINE.md](articles/DREADLINE.md)
-
----
-
-### 💎 Boulder Rush — *Claude Code (Fable)*
-
-<p align="center">
-  <img src="boulderdash/demo_bot_playing.png" alt="Boulder Rush played by its autonomous bot" width="480">
-</p>
-
-A Boulder Dash tribute with authentic cave physics: boulders and gems fall, roll off rounded objects, and are deadly only while falling. Custom charset, seeded procedural caves, SID sfx — and a new benchmark dimension: `demo_bot.py` plays the game autonomously, reading the cave from screen RAM through the VICE monitor, planning with weighted BFS, and steering through the edge-triggered agent input byte at `$033C`.
-
----
-
-### ⛏️ IRON VEIN — *Claude Code (Fable 5.1)*
-
-<p align="center">
-  <img src="ironvein/ironvein_demo.gif" alt="IRON VEIN demo" width="480">
-</p>
-
-An 8-way scrolling action demo in the Turrican class, spike-first: the engine was profiled until it said 50 fps before a tile was drawn. Double-buffered screen RAM with colour per world row (colour RAM cannot be double-buffered, so the art direction follows the engine), a commit-and-stall camera that prepares the shifted buffer over seven frames, a HUD/playfield split verified in all eight fine-scroll phases, a double-banked sprite multiplexer, and every per-object routine in assembly after cc65 measured four times slower. Gravity, a designed 64x32 level, a four-sprite boss. The diary with every dead end is [ironvein/DEVLOG.md](ironvein/DEVLOG.md); the article is [articles/IRONVEIN_8WAY.md](articles/IRONVEIN_8WAY.md).
-
----
-
-### 🌌 ION RIFT — *Claude Code (Fable)*
-
-<p align="center">
-  <img src="ionrift/ionrift_gameplay.png" alt="ION RIFT gameplay" width="480">
-</p>
-
-A horizontally scrolling shoot-em-up built to go one step past Dreadline: pixel-smooth `$D016` scrolling at 50 fps, a two-interrupt raster split (steady HUD above a scrolling playfield), double-buffered screen RAM flipped in the IRQ, procedural multicolor terrain generated column by column, a unified `assetgen.py` tile+sprite pipeline, and a two-voice SID music engine with a dedicated sfx voice. Write-up: [articles/FABLE_BENCHMARK.md](articles/FABLE_BENCHMARK.md)
-
----
-
-### 👾 Space Invaders
+### 👾 Space Invaders — *Gemini 3*
 
 <p align="center">
   <img src="invaders/invaders.gif" alt="Space Invaders Demo" width="480">
@@ -85,7 +98,7 @@ A faithful recreation of the arcade classic, written in **C** (`cc65`). 55 custo
 
 ---
 
-### 🧱 Arkanoid
+### 🧱 Arkanoid — *Gemini 3*
 
 <p align="center">
   <img src="arkanoid/arkanoid.gif" alt="Arkanoid Demo" width="480">
@@ -95,7 +108,7 @@ A Breakout/Arkanoid clone with 8-bit fixed-point ball physics, sprite-based padd
 
 ---
 
-### 🟡 Pac-Man
+### 🟡 Pac-Man — *Gemini 3*
 
 <p align="center">
   <img src="pacman_c/pacman.gif" alt="Pac-Man Demo" width="480">
@@ -105,7 +118,7 @@ Two versions: **C** (`pacman_c/`, recommended) and **6502 Assembly** (`pacman/`)
 
 ---
 
-### 🐍 Snake
+### 🐍 Snake — *Gemini 3*
 
 <p align="center">
   <img src="snake/snake.gif" alt="Snake Demo" width="480">
@@ -115,13 +128,14 @@ The original proof-of-concept game for this toolchain. Written in 6502 Assembly 
 
 ---
 
-### Other Games
-
-The repository also includes several additional C64 demos and games:
+### Other Games and Demos
 
 | Game | Directory | Description |
 |------|-----------|-------------|
-| **Tetris** | `tetris_v1/`, `tetris_v2/` | Two versions of the classic block puzzle |
+| **Sky Miner** | `sky_miner/` | Original: catch crystals, dodge meteors, sprite-based, demo mode (Claude Code) |
+| **Frogger** | `frogger/` | The arcade classic in multicolour bitmap mode, cc65 |
+| **Snake 2** | `snake2/` | Snake rebuilt on hardware sprites, 6502 assembly |
+| **Tetris** | `tetris_v1/`, `tetris_v2/` | Two versions of the classic block puzzle — the "Tetris test" of the first articles |
 | **Pong** | `pong/` | Classic two-paddle game |
 | **Breakout** | `breakout/` | Brick-breaking game |
 | **Bounce** | `bounce/` | Ball bouncing demo |
@@ -132,6 +146,7 @@ The repository also includes several additional C64 demos and games:
 | **Scroller** | `scroller/` | Text scrolling demo |
 | **Matrix** | `matrix/` | Matrix rain effect with custom kanji charset |
 | **Christmas** | `christmas/` | Seasonal PETSCII art display |
+| **New Year** | `newyear/`, `newyear_petascii/` | New Year 2026 greetings, bitmap and PETSCII editions |
 
 ---
 
@@ -139,32 +154,44 @@ The repository also includes several additional C64 demos and games:
 
 ```mermaid
 graph TD
-    AI[AI Agent / User] -->|Writes C or ASM code| Code[Source Code]
-    Code -->|cc65| Binary[.prg File]
-    Binary -->|reload_game.py| VICE[VICE Emulator]
-    VICE -->|Remote Monitor :6510| Bridge[ai_toolchain.py]
-    Bridge -->|ASCII Screen Dump| AI
-    VICE -->|Screenshot| VLM[vlm_look.py + Ollama]
-    VLM -->|Visual Analysis| AI
+    AI[AI Agent] -->|writes C / ASM, assetgen.py art| Code[Source + assets]
+    Code -->|cc65| Binary[.prg]
+    Binary -->|reload_game.py / run_vice.sh| VICE[VICE x64, remote monitor :6510]
+    VICE -->|screen RAM as ASCII| Bridge[ai_toolchain.py]
+    Bridge --> AI
+    VICE -->|screenshot| VLM[vlm_look.py + Ollama]
+    VLM -->|visual analysis| AI
+    VICE -->|RAM counters, frozen captures| Probes[profilers, lost/late frame counters]
+    Probes --> AI
+    AI -->|"$033C / $033E input bytes, teleport hooks"| VICE
+    Code -->|assetsheet.py| Sheet[magnified art]
+    Sheet --> AI
+    VICE -->|record_gif.py| GIF[demo GIFs]
+    S1[System 1: async_agent_control.py] -->|plays, scores surprise| VICE
+    S1 -->|interrupt JSON| S2[System 2: system2_ollama.py]
+    S2 -->|policy patch| S1
 ```
+
+Two loops, then. The **development loop** — edit, build, reload, look — is what every game here went through. The **play loop** is newer: a fast System 1 that watches the machine and drives the joystick byte, and a slow System 2 (an LLM) that is woken only when System 1 is surprised. The scrolling games add a third element that turned out to matter most: **the agent's own instruments** — cycle counters read through the monitor, frame-lost and frame-late counters, captures frozen with RAM read in the same session as the screenshot. Every hard problem in IRON VEIN was found by one of those, not by looking.
 
 ## The Stack
 
 - **AI Models (tested)**:
-  - **Google Gemini 3** — classic game clones (Space Invaders, Arkanoid, Pac-Man, Pong, Tetris, etc.)
-  - **Claude Opus 4.6** (via GitHub Copilot in VS Code) — original game creation (METEOR STORM), autonomous debugging including memory layout fixes
-- **IDE**: Visual Studio Code with GitHub Copilot agent mode
-- **Compiler**: `cc65` (6502/6510 cross-compiler, C and assembly)
-- **Emulator**: `VICE` (x64sc) running in remote monitor mode
-- **VLM**: Ollama with vision models (e.g., `qwen3-vl`) for visual verification of game output
-- **Bridge**: Python 3 scripts (`ai_toolchain.py`, `vlm_look.py`) handling socket communication and visual feedback
+  - **Google Gemini 3** — the classic clones (Space Invaders, Arkanoid, Pac-Man, Pong, Tetris…)
+  - **Claude Opus 4.6** (GitHub Copilot in VS Code) — original games (METEOR STORM, Dreadline), autonomous debugging including memory-layout fixes
+  - **Claude Fable and Fable 5.1** (Claude Code) — the scrolling engines (ION RIFT, GHOST KEEP, IRON VEIN), Boulder Rush and its bot, and the measurement and art tools below
+- **Agent harness**: Claude Code (terminal or VS Code extension); GitHub Copilot agent mode for the earlier work
+- **Compiler**: `cc65` (6502/6510 cross-compiler, C and assembly; `-Or` puts `register` pointers in zero page, which matters)
+- **Emulator**: `VICE` (`x64`, tested with 3.7.1) in remote monitor mode on port 6510
+- **VLM**: Ollama with a local vision model — `gemma4:12b-it-qat` at the time of writing (`qwen3-vl` and its cloud variant are retired; pass `-m` or set `OLLAMA_MODEL`). Its reading of C64 text is unreliable, so the agent cross-checks against screen RAM.
+- **Bridge**: Python 3 scripts handling socket communication, screenshots, visual feedback, asset generation and filming
 
 ## Getting Started
 
 ### Prerequisites
 - **cc65**: Cross-compiler suite.
 - **VICE**: Commodore emulator (must support `-remotemonitor`).
-- **Python 3**: For the toolchain bridge.
+- **Python 3** with Pillow (asset tools), `ffmpeg` (GIFs), Ollama (visual checks).
 
 ### Installation
 
@@ -174,57 +201,58 @@ git clone https://github.com/dexmac221/C64AIToolChain.git
 cd C64AIToolChain
 
 # Install dependencies (Linux)
-sudo apt install cc65 vice python3
+sudo apt install cc65 vice python3 ffmpeg
+pip install -r requirements.txt
 ```
 
 ### Quick Start — Play a Game
 
-Every game directory includes a pre-compiled `.prg` file. Just launch it:
+Every game directory includes a pre-compiled `.prg` file and a launcher:
 
 ```bash
-cd meteor
-./run_vice.sh
+cd ironvein
+./run_vice.sh          # joystick in port 2; idle for a while and the autopilot plays
 ```
+
+The launchers clear the environment variables that a snap-packaged VS Code leaks into its terminal (they make VICE crash at start with a glibc error), keep the sound server, and start windowed. If VICE dies on launch from an IDE terminal, copy the `env -u …` line from `ironvein/run_vice.sh`; see also [PROJECTINFO.md](PROJECTINFO.md).
 
 ### The AI Development Workflow
 
-1.  **Launch the Environment**:
-    Start VICE with the remote monitor enabled.
+1.  **Launch the environment** — VICE with the remote monitor:
     ```bash
     cd snake
     ./run_vice.sh
     ```
 
-2.  **Run the Toolchain**:
-    In a separate terminal, start the Python bridge. This visualizes the C64 screen as ASCII, allowing an AI agent to verify the game state.
+2.  **Look** — in a separate terminal, the Python bridge shows the C64 screen as ASCII, so an agent can verify the game state without eyes; `vlm_look.py` adds the eyes:
     ```bash
     python3 ai_toolchain.py
+    python3 vlm_look.py -m gemma4:12b-it-qat
     ```
 
-3.  **Iterate**:
-    Modify the source, rebuild, and hot-reload:
+3.  **Iterate** — modify the source, rebuild, hot-reload:
     ```bash
-    ./build.sh && python3 reload_game.py
+    ./build.sh && python3 reload_game.py --start 080d
     ```
+    (`cl65` programs start at `$080D`; the reload script's default of `$0810` sometimes works by luck.)
+
+4.  **Play it from outside** — the newer games OR a byte at `$033C` into the joystick (up 1, down 2, left 4, right 8, fire 16; the game clears it after reading, so it is edge-triggered) and hold bits at `$033E`. GHOST KEEP, ION RIFT and IRON VEIN add teleport hooks (`$0340`/`$0341`) so a bot or a film script can jump to a section. Through the monitor: `> 033c 10` is one press of fire.
+
+The rules the agents are held to are in [AGENT_RULES.md](AGENT_RULES.md); the practical guide is [AGENT_HOWTO.md](AGENT_HOWTO.md); the original development notes are [AI_DEVELOPMENT.md](AI_DEVELOPMENT.md) and [AI_COMPARISON.md](AI_COMPARISON.md).
 
 ## Toolchain Components
 
 ### `run_vice.sh`
-Universal VICE launcher that handles environment issues (especially when running from VS Code or other IDEs). It clears problematic environment variables and tries both `x64sc` and `x64` executables.
-
-```bash
-# Run with default (snake/snake.prg)
-./run_vice.sh
-
-# Run a specific PRG file
-./run_vice.sh tetris_v1/tetris.prg
-```
+Launcher wrapper: `./run_vice.sh path/to/game.prg` from the repo root, or `./run_vice.sh` inside a game directory. The root script defers to `run_vice_generic.sh` (which clears the worst of the IDE environment and pins the emulator speed); the per-game scripts in the newer directories carry the fuller environment recipe.
 
 ### `ai_toolchain.py`
-The eyes of the system. It connects to `localhost:6510`, dumps memory range `$0400-$07E7` (Screen RAM), and renders it as ASCII. This allows an AI to verify:
-- Did the snake spawn correctly?
-- Are the walls drawing?
-- Is the score updating?
+The eyes of the system, text edition. It connects to `localhost:6510`, dumps the screen RAM range `$0400-$07E7`, and renders it as ASCII. This lets an agent verify what is written on screen, exactly, which a vision model cannot always do.
+
+### `vlm_look.py` and `look_screen.py`
+The visual feedback loop. `vlm_look.py` takes a screenshot from VICE, sends it to a local Ollama vision model and returns a structured analysis of the game state (sprites, text, glitches); `look_screen.py` converts the screenshot to ASCII art for text-only models. Between them and the screen RAM dump, the agent "sees" the game screen. The human's eye still outranks all three.
+
+### `reload_game.py`
+The hands of the system. It automates detaching the disk image, loading the new PRG, and restarting the program, preserving the emulator window.
 
 ### `async_agent_control.py`
 The fast/slow gameplay testing loop. A local System 1 controller samples VICE hardware state at high frequency, watches sprite registers, collisions, sprite pointers, and screen RAM, then accumulates a Surprise/Frustration score. When the score crosses a threshold, it can either stop and write an interrupt JSON for deliberate inspection, or keep the gameplay thread running while archiving interrupt events and dispatching them to System 2 asynchronously.
@@ -251,15 +279,9 @@ python3 async_agent_control.py --game dreadline --system1 neural --neural-model 
 python3 system2_ollama.py --model deepseek-v4-flash:cloud --escalate-model deepseek-v4-pro:cloud
 ```
 
-Safety note: `--once` leaves VICE paused by default, and the fast loop clamps overly aggressive sampling intervals unless `--unsafe-fast` is explicitly used.
+Safety note: `--once` leaves VICE paused by default, and the fast loop clamps overly aggressive sampling intervals unless `--unsafe-fast` is explicitly used. VICE 3.7.1's monitor also wedges under hundreds of short connections, so long runs are better served by the games' own demo modes.
 
-Full architecture: [ASYNC_AGENT_CONTROL.md](ASYNC_AGENT_CONTROL.md)
-
-### `vlm_look.py`
-The "brain" of the visual feedback loop. It takes a screenshot from VICE, sends it to a local Ollama instance (running `qwen3-vl` or similar), and returns a structured analysis of the game state (sprites, text, glitches). This allows the agent to "see" the game screen and verify visual elements that `ai_toolchain.py` (which only sees text RAM) might miss.
-
-### `reload_game.py`
-The hands of the system. It automates the tedious process of detaching the disk image, loading the new PRG, and restarting the program execution, preserving the emulator window.
+Full architecture: [ASYNC_AGENT_CONTROL.md](ASYNC_AGENT_CONTROL.md) · Article: [articles/SYSTEM1_GAME_UNDERSTANDING.md](articles/SYSTEM1_GAME_UNDERSTANDING.md)
 
 ### `img2sprite.py`
 Turns any picture into the 12×21 multicolour grid the games' `assetgen.py`
@@ -289,13 +311,15 @@ colours the game actually sets, on the game's own background.
 ```bash
 ./assetsheet.py ghosts/assetgen.py --out /tmp/sheet.png
 ./assetsheet.py ghosts/assetgen.py --strip ART_RUN1,ART_RUN2 --scale 14
+./assetsheet.py ironvein/assetgen.py --sprite-col HERO=14,DRONE=13 --only HERO
 ./assetsheet.py ghosts/assetgen.py --tiles --grid
 ```
 
 It paid for itself the first time it was run: GHOST KEEP's knight and its
 zombies turned out to be [the same silhouette in two
 colours](articles/ghostkeep_sprite_redraw.png), which had been mistaken for a
-scrolling problem.
+scrolling problem. IRON VEIN's hero was drawn as a strip on it before it was
+ever compiled.
 
 ### `record_gif.py`
 Film a running VICE through its monitor and make a GIF. Every frame is the
@@ -321,12 +345,15 @@ Capture screenshots from VICE via the remote monitor. Supports multiple formats.
 # Formats: 0=BMP, 1=PCX, 2=PNG, 3=GIF, 4=IFF
 ```
 
-## References
+## Articles
 
+*   [IRON VEIN: an 8-way scroller on the C64, built by an agent that had to measure everything](articles/IRONVEIN_8WAY.md)
+*   [System 1 for C64 Games: a fast reflex layer that teaches the agent what the game means](articles/SYSTEM1_GAME_UNDERSTANDING.md)
+*   [Fable benchmark: ION RIFT and the scrolling engine](articles/FABLE_BENCHMARK.md)
+*   [Dreadline](articles/DREADLINE.md) · [METEOR STORM: full creative process log](articles/METEOR_STORM.md)
 *   [The Commodore 64 Constraint: Why Gemini 3 is the First AI to Beat the Tetris Test](https://medium.com/@gianlucabailo/the-commodore-64-constraint-why-gemini-3-is-the-first-ai-to-beat-the-tetris-test-6db84609ae15)
 *   [I Made Claude and Gemini Write Tetris for a 1982 Computer](https://medium.com/@gianlucabailo/i-made-claude-and-gemini-write-tetris-for-a-1982-computer-cc5c85936f8d)
 *   [Claude 4.6 and the Commodore 64: When an LLM Writes, Builds, and Playtests Its Own Game](https://medium.com/ai-advances/claude-4-6-and-the-commodore-64-when-an-llm-writes-builds-and-playtests-its-own-game-bdeb9dca3c74)
-*   [METEOR STORM: Full creative process log](articles/METEOR_STORM.md)
 
 ## License
 MIT
