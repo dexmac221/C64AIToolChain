@@ -1,0 +1,291 @@
+{
+  "start": {
+    "signature": "DS",
+    "state": 1,
+    "ticks": 50,
+    "updates": 41,
+    "missed": 0,
+    "worst_cycles": 3881,
+    "renders": 1,
+    "player": [
+      64,
+      460
+    ],
+    "camera": [
+      0,
+      312
+    ],
+    "health": 5,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 3225,
+    "route": 0,
+    "grounded": 1,
+    "display_camera": [
+      0,
+      312
+    ],
+    "fine_mismatches": 0,
+    "screen_mismatches": 0
+  },
+  "right": {
+    "signature": "DS",
+    "state": 1,
+    "ticks": 101,
+    "updates": 92,
+    "missed": 0,
+    "worst_cycles": 4014,
+    "renders": 1,
+    "player": [
+      120,
+      460
+    ],
+    "camera": [
+      0,
+      312
+    ],
+    "health": 5,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 3390,
+    "route": 0,
+    "grounded": 1,
+    "display_camera": [
+      0,
+      312
+    ],
+    "fine_mismatches": 0,
+    "screen_mismatches": 0
+  },
+  "left": {
+    "signature": "DS",
+    "state": 1,
+    "ticks": 141,
+    "updates": 132,
+    "missed": 0,
+    "worst_cycles": 4019,
+    "renders": 1,
+    "player": [
+      84,
+      460
+    ],
+    "camera": [
+      0,
+      312
+    ],
+    "health": 5,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 3386,
+    "route": 0,
+    "grounded": 1,
+    "display_camera": [
+      0,
+      312
+    ],
+    "fine_mismatches": 0,
+    "screen_mismatches": 0
+  },
+  "held-right": {
+    "signature": "DS",
+    "state": 1,
+    "ticks": 188,
+    "updates": 179,
+    "missed": 0,
+    "worst_cycles": 4068,
+    "renders": 1,
+    "player": [
+      130,
+      460
+    ],
+    "camera": [
+      0,
+      312
+    ],
+    "health": 5,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 3500,
+    "route": 0,
+    "grounded": 1,
+    "display_camera": [
+      0,
+      312
+    ],
+    "fine_mismatches": 0,
+    "screen_mismatches": 0
+  },
+  "jump": {
+    "signature": "DS",
+    "state": 1,
+    "ticks": 230,
+    "updates": 221,
+    "missed": 0,
+    "worst_cycles": 16217,
+    "renders": 5,
+    "player": [
+      130,
+      412
+    ],
+    "camera": [
+      0,
+      312
+    ],
+    "health": 5,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 3383,
+    "route": 0,
+    "grounded": 1,
+    "display_camera": [
+      0,
+      312
+    ],
+    "fine_mismatches": 0,
+    "screen_mismatches": 0
+  },
+  "shot_life": 17,
+  "death": {
+    "signature": "DS",
+    "state": 2,
+    "ticks": 279,
+    "updates": 250,
+    "missed": 0,
+    "worst_cycles": 16217,
+    "renders": 5,
+    "player": [
+      130,
+      490
+    ],
+    "camera": [
+      0,
+      312
+    ],
+    "health": 0,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 430,
+    "route": 0,
+    "grounded": 0,
+    "display_camera": [
+      0,
+      312
+    ]
+  },
+  "retry": {
+    "signature": "DS",
+    "state": 1,
+    "ticks": 321,
+    "updates": 29,
+    "missed": 0,
+    "worst_cycles": 3881,
+    "renders": 1,
+    "player": [
+      64,
+      460
+    ],
+    "camera": [
+      0,
+      312
+    ],
+    "health": 5,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 3880,
+    "route": 0,
+    "grounded": 1,
+    "display_camera": [
+      0,
+      312
+    ],
+    "fine_mismatches": 0,
+    "screen_mismatches": 0
+  },
+  "restart": {
+    "signature": "DS",
+    "state": 1,
+    "ticks": 361,
+    "updates": 13,
+    "missed": 0,
+    "worst_cycles": 3213,
+    "renders": 1,
+    "player": [
+      64,
+      460
+    ],
+    "camera": [
+      0,
+      312
+    ],
+    "health": 5,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 2964,
+    "route": 0,
+    "grounded": 1,
+    "display_camera": [
+      0,
+      312
+    ],
+    "fine_mismatches": 0,
+    "screen_mismatches": 0
+  },
+  "input_method": "diagnostic hold byte; GUI keyboard automation inconclusive, not certified",
+  "recording-final": {
+    "signature": "DS",
+    "state": 3,
+    "ticks": 933,
+    "updates": 450,
+    "missed": 0,
+    "worst_cycles": 18057,
+    "renders": 163,
+    "player": [
+      956,
+      106
+    ],
+    "camera": [
+      704,
+      17
+    ],
+    "health": 4,
+    "signals": 7,
+    "demo": 1,
+    "last_cycles": 424,
+    "route": 6,
+    "grounded": 0,
+    "display_camera": [
+      704,
+      17
+    ]
+  },
+  "recording_final": {
+    "signature": "DS",
+    "state": 3,
+    "ticks": 933,
+    "updates": 450,
+    "missed": 0,
+    "worst_cycles": 18057,
+    "renders": 163,
+    "player": [
+      956,
+      106
+    ],
+    "camera": [
+      704,
+      17
+    ],
+    "health": 4,
+    "signals": 7,
+    "demo": 1,
+    "last_cycles": 424,
+    "route": 6,
+    "grounded": 0,
+    "display_camera": [
+      704,
+      17
+    ]
+  },
+  "gif": "104 screenshots at 8 Hz wall-clock sampling; monitor pauses affect sampling, not a frame-rate benchmark",
+  "pass": true,
+  "network_errors": 0
+}

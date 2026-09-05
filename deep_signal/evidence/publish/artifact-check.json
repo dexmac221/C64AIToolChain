@@ -1,0 +1,11 @@
+{
+  "build_matches_shipped_prg": true,
+  "prg_sha256": "505395ea955dc62ff12ec708dcbcf597a0da057a2c6fc8c48d39504dbdb68657",
+  "gif_sha256": "bc42869700947dc89c0970ab1ab903cb71845b90ffd43504389006ca40be6c09",
+  "gif_frames": 104,
+  "gif_duration_seconds": 13.01,
+  "gif_width": 384,
+  "gif_height": 272,
+  "gif_sampling_note": "Nominal 8 Hz wall-clock capture, includes monitor pauses; not an FPS benchmark",
+  "staged_checkout_demo": "PASS"
+}

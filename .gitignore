@@ -36,3 +36,8 @@ vice.log.*
 !ionrift/ionrift_parallax.png
 !ionrift/ionrift_multiplex.png
 !ghosts/ghosts_graveyard.png
+
+# Selected screenshots for the new game development diary
+!deep_signal/evidence/final/*.png
+!deep_signal/evidence/controls/*.png
+!deep_signal/evidence/directions/scan-04750.png

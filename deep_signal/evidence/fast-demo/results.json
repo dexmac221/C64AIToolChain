@@ -1,0 +1,212 @@
+{
+  "samples": [
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 127,
+      "updates": 84,
+      "missed": 9,
+      "worst_cycles": 21572,
+      "renders": 32,
+      "player": [
+        236,
+        314
+      ],
+      "camera": [
+        92,
+        226
+      ],
+      "health": 5,
+      "signals": 1,
+      "demo": 1,
+      "last_cycles": 5333,
+      "route": 2,
+      "grounded": 0,
+      "display_camera": [
+        92,
+        226
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 2.0
+    },
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 326,
+      "updates": 283,
+      "missed": 9,
+      "worst_cycles": 21572,
+      "renders": 127,
+      "player": [
+        450,
+        249
+      ],
+      "camera": [
+        306,
+        161
+      ],
+      "health": 4,
+      "signals": 1,
+      "demo": 1,
+      "last_cycles": 4933,
+      "route": 3,
+      "grounded": 0,
+      "display_camera": [
+        306,
+        161
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 6.01
+    },
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 526,
+      "updates": 482,
+      "missed": 10,
+      "worst_cycles": 21572,
+      "renders": 212,
+      "player": [
+        848,
+        398
+      ],
+      "camera": [
+        704,
+        310
+      ],
+      "health": 5,
+      "signals": 3,
+      "demo": 1,
+      "last_cycles": 17148,
+      "route": 5,
+      "grounded": 0,
+      "display_camera": [
+        704,
+        310
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 10.04
+    },
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 724,
+      "updates": 680,
+      "missed": 10,
+      "worst_cycles": 21572,
+      "renders": 229,
+      "player": [
+        892,
+        429
+      ],
+      "camera": [
+        704,
+        312
+      ],
+      "health": 5,
+      "signals": 3,
+      "demo": 1,
+      "last_cycles": 4345,
+      "route": 5,
+      "grounded": 0,
+      "display_camera": [
+        704,
+        312
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 14.07
+    },
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 924,
+      "updates": 880,
+      "missed": 10,
+      "worst_cycles": 21572,
+      "renders": 245,
+      "player": [
+        892,
+        429
+      ],
+      "camera": [
+        704,
+        312
+      ],
+      "health": 5,
+      "signals": 3,
+      "demo": 1,
+      "last_cycles": 4343,
+      "route": 5,
+      "grounded": 0,
+      "display_camera": [
+        704,
+        312
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 18.06
+    },
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 1124,
+      "updates": 1080,
+      "missed": 10,
+      "worst_cycles": 21572,
+      "renders": 262,
+      "player": [
+        892,
+        394
+      ],
+      "camera": [
+        704,
+        306
+      ],
+      "health": 5,
+      "signals": 3,
+      "demo": 1,
+      "last_cycles": 4319,
+      "route": 5,
+      "grounded": 0,
+      "display_camera": [
+        704,
+        306
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 22.08
+    }
+  ],
+  "failure": null,
+  "title": {
+    "signature": "DS",
+    "state": 0,
+    "ticks": 21,
+    "updates": 21,
+    "missed": 0,
+    "worst_cycles": 645,
+    "renders": 0,
+    "player": [
+      0,
+      0
+    ],
+    "camera": [
+      0,
+      0
+    ],
+    "health": 0,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 438,
+    "route": 0,
+    "grounded": 0,
+    "display_camera": [
+      0,
+      0
+    ]
+  },
+  "settings": {
+    "resourceget \"Speed\"": "Speed=100\n(C:$1e16) ",
+    "resourceget \"AutostartWarp\"": "AutostartWarp=0\n(C:$1e16) ",
+    "warp": "Warp mode is off.\n(C:$1e16) "
+  },
+  "network_errors": 0
+}

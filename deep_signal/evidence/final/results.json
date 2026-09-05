@@ -1,0 +1,124 @@
+{
+  "samples": [
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 128,
+      "updates": 94,
+      "missed": 0,
+      "worst_cycles": 18057,
+      "renders": 37,
+      "player": [
+        250,
+        298
+      ],
+      "camera": [
+        106,
+        210
+      ],
+      "health": 5,
+      "signals": 1,
+      "demo": 1,
+      "last_cycles": 4304,
+      "route": 2,
+      "grounded": 0,
+      "display_camera": [
+        106,
+        210
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 2.0
+    },
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 327,
+      "updates": 293,
+      "missed": 0,
+      "worst_cycles": 18057,
+      "renders": 111,
+      "player": [
+        648,
+        220
+      ],
+      "camera": [
+        504,
+        132
+      ],
+      "health": 5,
+      "signals": 3,
+      "demo": 1,
+      "last_cycles": 16551,
+      "route": 4,
+      "grounded": 1,
+      "display_camera": [
+        504,
+        132
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 6.04
+    },
+    {
+      "signature": "DS",
+      "state": 3,
+      "ticks": 526,
+      "updates": 450,
+      "missed": 0,
+      "worst_cycles": 18057,
+      "renders": 163,
+      "player": [
+        956,
+        106
+      ],
+      "camera": [
+        704,
+        17
+      ],
+      "health": 4,
+      "signals": 7,
+      "demo": 1,
+      "last_cycles": 424,
+      "route": 6,
+      "grounded": 0,
+      "display_camera": [
+        704,
+        17
+      ],
+      "wall_seconds": 10.05
+    }
+  ],
+  "failure": null,
+  "title": {
+    "signature": "DS",
+    "state": 0,
+    "ticks": 21,
+    "updates": 0,
+    "missed": 0,
+    "worst_cycles": 0,
+    "renders": 0,
+    "player": [
+      0,
+      0
+    ],
+    "camera": [
+      0,
+      0
+    ],
+    "health": 0,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 437,
+    "route": 0,
+    "grounded": 0,
+    "display_camera": [
+      0,
+      0
+    ]
+  },
+  "settings": {
+    "resourceget \"Speed\"": "Speed=100\n(C:$112e) ",
+    "resourceget \"AutostartWarp\"": "AutostartWarp=0\n(C:$112e) ",
+    "warp": "Warp mode is off.\n(C:$112e) "
+  },
+  "network_errors": 0
+}

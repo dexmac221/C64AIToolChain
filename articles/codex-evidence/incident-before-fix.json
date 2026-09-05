@@ -1,0 +1,12 @@
+{
+  "codex-vice-matrix.log": {
+    "bytes": 1799124,
+    "network_send_errors": 33851,
+    "sync_reset_lines": 33854
+  },
+  "codex-vice-protocol.log": {
+    "bytes": 4585832,
+    "network_send_errors": 86431,
+    "sync_reset_lines": 86434
+  }
+}

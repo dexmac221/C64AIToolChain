@@ -2,7 +2,7 @@
 
 **C64AIToolChain** is a Commodore 64 development toolchain designed as a **creative benchmark for AI agents**. An agent is dropped into this workspace with a cross-compiler, an emulator it can drive through a socket, and a set of rules, and is asked to design, build, play-test and ship games for a 1982 computer — C and 6502 assembly, 64 KB, no debugger but the one it writes itself.
 
-**Tested with:** **Google Gemini 3** · **Claude Sonnet 4.5 / 4.6** · **Claude Opus 4.5 / 4.6** (GitHub Copilot, Cursor) · **OpenAI GPT-5.5** · **Claude Fable 5** · **Claude Fable 5.1** (Claude Code)
+**Tested with:** **Google Gemini 3** · **Claude Sonnet 4.5 / 4.6** · **Claude Opus 4.5 / 4.6** (GitHub Copilot, Cursor) · **OpenAI GPT-5.5 / Codex** · **Claude Fable 5** · **Claude Fable 5.1** (Claude Code)
 
 ### How It Works as a Benchmark
 
@@ -14,13 +14,34 @@ The agent is given the workspace and asked to:
 
 This tests sustained, multi-domain autonomous problem-solving: game design, systems programming, hardware constraints, memory layout, measurement, visual debugging, and iterative refinement — over sessions that last days. Unlike benchmarks such as ARC-AGI (pattern recognition), SWE-bench (isolated bug fixes), or HumanEval (function-level generation), this measures an agent's ability to **hold a complex constrained system in context and ship a working product**, and to say honestly, with numbers, when it has not.
 
-Several generations of models have worked here, and the showcase below runs newest first: **Fable 5.1** on IRON VEIN and **Fable 5** on ION RIFT, GHOST KEEP and Boulder Rush, both in Claude Code, where the agent also built its own measurement and testing tools; **GPT-5.5** on Dreadline and Sky Miner; the **Opus 4.6** original in Copilot (METEOR STORM), Sonnet and Opus 4.x on the mid-period games; and the **Gemini 3** and **Sonnet 4.5** clones that started it all (Space Invaders, Arkanoid, Pac-Man, Snake, Tetris…).
+Several generations of models have worked here, and the showcase below runs newest first: **OpenAI Codex** on DEEP SIGNAL; **Fable 5.1** on IRON VEIN and **Fable 5** on ION RIFT, GHOST KEEP and Boulder Rush, both in Claude Code, where the agent also built its own measurement and testing tools; **GPT-5.5** on Dreadline and Sky Miner; the **Opus 4.6** original in Copilot (METEOR STORM), Sonnet and Opus 4.x on the mid-period games; and the **Gemini 3** and **Sonnet 4.5** clones that started it all (Space Invaders, Arkanoid, Pac-Man, Snake, Tetris…).
 
 > **All `.prg` files are included pre-compiled** — load them directly in VICE without needing cc65.
 
 ---
 
 ## 🎮 Game Showcase
+
+### DEEP SIGNAL — OpenAI Codex
+
+Platform shooter originale C64 PAL, sviluppato da **OpenAI Codex** con direzione
+e feedback dell’utente: codice C/Assembly 6502, grafica e mappa originali.
+Scrolling nelle otto direzioni, tre ripetitori, quattro droni, checkpoint e demo
+che completa la missione. [Gioco e comandi](deep_signal/README.md) ·
+[Diario con errori e misure](deep_signal/DEVLOG.md) ·
+[Articolo per Medium: difficoltà e sviluppo](articles/DEEP_SIGNAL_MEDIUM_IT.md).
+
+**Demo automatica:** premi F1 dalla schermata iniziale, oppure attendi circa
+dieci secondi. La demo salta, spara, collega i ripetitori e raggiunge l’uscita.
+Avvio: `./deep_signal/run_vice.sh`.
+
+<p align="center"><img src="deep_signal/deep_signal.gif" alt="DEEP SIGNAL demo" width="480"></p>
+
+Zero scadenze mancate nel percorso misurato; confronto a parità di condizioni
+con IRON VEIN ancora da svolgere. È un primo livello, non una valutazione
+comparativa conclusa.
+
+---
 
 ### ⛏️ IRON VEIN — *Claude Code (Fable 5.1)*
 
@@ -235,9 +256,9 @@ The launchers clear the environment variables that a snap-packaged VS Code leaks
 
 3.  **Iterate** — modify the source, rebuild, hot-reload:
     ```bash
-    ./build.sh && python3 reload_game.py --start 080d
+    ./build.sh && python3 reload_game.py
     ```
-    (`cl65` programs start at `$080D`; the reload script's default of `$0810` sometimes works by luck.)
+    The loader detects the literal BASIC `SYS` entrypoint and verifies the PRG bytes in RAM before starting. For a program without a supported BASIC stub, pass `--start HEX` explicitly.
 
 4.  **Play it from outside** — the newer games OR a byte at `$033C` into the joystick (up 1, down 2, left 4, right 8, fire 16; the game clears it after reading, so it is edge-triggered) and hold bits at `$033E`. GHOST KEEP, ION RIFT and IRON VEIN add teleport hooks (`$0340`/`$0341`) so a bot or a film script can jump to a section. Through the monitor: `> 033c 10` is one press of fire.
 
@@ -255,7 +276,7 @@ The eyes of the system, text edition. It connects to `localhost:6510`, dumps the
 The visual feedback loop. `vlm_look.py` takes a screenshot from VICE, sends it to a local Ollama vision model and returns a structured analysis of the game state (sprites, text, glitches); `look_screen.py` converts the screenshot to ASCII art for text-only models. Between them and the screen RAM dump, the agent "sees" the game screen. The human's eye still outranks all three.
 
 ### `reload_game.py`
-The hands of the system. It automates detaching the disk image, loading the new PRG, and restarting the program, preserving the emulator window.
+The hands of the system. It loads and verifies the PRG in one monitor connection, then starts at its BASIC SYS entrypoint, preserving the emulator window. A failed load/verification resets the machine instead of executing unverified bytes. It does not restore arbitrary previous machine state.
 
 ### `async_agent_control.py`
 The fast/slow gameplay testing loop. A local System 1 controller samples VICE hardware state at high frequency, watches sprite registers, collisions, sprite pointers, and screen RAM, then accumulates a Surprise/Frustration score. When the score crosses a threshold, it can either stop and write an interrupt JSON for deliberate inspection, or keep the gameplay thread running while archiving interrupt events and dispatching them to System 2 asynchronously.

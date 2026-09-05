@@ -18,210 +18,98 @@ Requirements:
 Author: C64AIToolChain Project
 """
 
-import socket
-import time
+import argparse
+import re
 import sys
-import os
+from pathlib import Path
+from vice_monitor import ViceMonitor, parse_monitor_bytes
 
 
-# Default machine-code entrypoint address after the embedded BASIC SYS stub.
-# Most programs in this repo end up starting at $0810.
-DEFAULT_START_ADDR = 0x0810
+def read_prg(path):
+    data = Path(path).read_bytes()
+    if len(data) < 3:
+        raise ValueError('PRG is empty or missing its load address')
+    address = int.from_bytes(data[:2], 'little')
+    if address + len(data) - 2 > 65536:
+        raise ValueError('PRG extends beyond C64 memory')
+    return address, data[2:]
 
 
-def connect_vice(host='localhost', port=6510, timeout=3.0):
-    """
-    Connect to VICE remote monitor.
-    
-    Args:
-        host: VICE host address
-        port: Remote monitor port (default 6510)
-        timeout: Connection timeout in seconds
-        
-    Returns:
-        Socket connection or None on failure
-    """
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(timeout)
-        s.connect((host, port))
-        # Clear welcome message
-        try:
-            s.recv(1024)
-        except socket.timeout:
-            pass
-        return s
-    except ConnectionRefusedError:
-        print(f"Error: Connection refused on {host}:{port}")
-        print("Is VICE running with -remotemonitor flag?")
-        return None
-    except socket.timeout:
-        print(f"Error: Connection timeout to {host}:{port}")
-        return None
-    except Exception as e:
-        print(f"Error connecting to VICE: {e}")
-        return None
-
-
-def send_command(s, cmd, timeout=1.0):
-    """
-    Send command to VICE monitor and get response.
-    
-    Args:
-        s: Socket connection
-        cmd: Command string to send
-        timeout: Response timeout in seconds
-        
-    Returns:
-        Response string or empty on failure
-    """
-    try:
-        s.settimeout(timeout)
-        s.send(f"{cmd}\n".encode())
-        time.sleep(0.3)
-        data = s.recv(4096)
-        return data.decode(errors='ignore')
-    except socket.timeout:
-        return ""
-    except BrokenPipeError:
-        print("Error: Connection to VICE lost")
-        return ""
-    except Exception as e:
-        print(f"Error sending command: {e}")
-        return ""
+def detect_start_address(path):
+    """Accept a literal SYS in the first BASIC line; never guess an entrypoint."""
+    address, payload = read_prg(path)
+    if address == 0x0801 and len(payload) >= 8:
+        next_line = int.from_bytes(payload[:2], 'little') - address
+        if 4 < next_line <= len(payload) - 2 and payload[next_line - 1] == 0:
+            line = payload[4:next_line - 1]
+            match = re.fullmatch(rb' *\x9e *([0-9]+) *', line)
+            if match:
+                entry = int(match.group(1))
+                if address <= entry < address + len(payload):
+                    return entry
+    raise ValueError('No supported literal BASIC SYS entrypoint; specify --start HEX')
 
 
 def resolve_prg_path(game_arg):
-    """
-    Resolve the .prg file path from the argument.
-    
-    Args:
-        game_arg: Game name or direct path to .prg
-        
-    Returns:
-        Absolute path to .prg file or None if not found
-    """
-    # If it's already a .prg path
-    if game_arg.endswith('.prg'):
-        if os.path.isabs(game_arg):
-            prg_path = game_arg
-        else:
-            prg_path = os.path.abspath(game_arg)
-    else:
-        # Try common patterns: game/game.prg, game.prg
-        candidates = [
-            f"{game_arg}/{game_arg}.prg",
-            f"{game_arg}/snake.prg",  # snake2 uses snake.prg
-            f"{game_arg}/tetris.prg",  # tetris uses tetris.prg
-            f"{game_arg}.prg",
-        ]
-        prg_path = None
-        for candidate in candidates:
-            if os.path.exists(candidate):
-                prg_path = os.path.abspath(candidate)
-                break
-    
-    if prg_path and os.path.exists(prg_path):
-        return prg_path
-    return None
+    path = Path(game_arg)
+    if path.is_file() and path.suffix.lower() == '.prg':
+        return str(path.resolve())
+    if path.is_dir():
+        preferred = path / (path.resolve().name + '.prg')
+        if preferred.is_file():
+            return str(preferred.resolve())
+        candidates = sorted(path.glob('*.prg'))
+        if len(candidates) == 1:
+            return str(candidates[0].resolve())
+        # Historical output conventions.
+        for name in ('snake.prg', 'tetris.prg'):
+            candidate = path / name
+            if candidate.is_file():
+                return str(candidate.resolve())
+    candidate = Path(str(path) + '.prg')
+    return str(candidate.resolve()) if candidate.is_file() else None
 
 
-def reload_game(prg_path, host='localhost', port=6510, start_addr=DEFAULT_START_ADDR):
-    """
-    Reload a .prg file into running VICE.
-    
-    Args:
-        prg_path: Absolute path to the .prg file
-        host: VICE host
-        port: VICE monitor port
-        
-    Returns:
-        True on success, False on failure
-    """
-    print(f"Connecting to VICE at {host}:{port}...")
-    s = connect_vice(host, port)
-    
-    if not s:
-        return False
-    
+def reload_game(prg_path, host='localhost', port=6510, start_addr=None):
     try:
-        print(f"Loading: {prg_path}")
-
-        # Disarm any custom raster IRQ before touching memory: the CPU may
-        # be paused mid-way through an IRQ vector swap ($0314/$0315), and
-        # forcing the PC with 'g' would leave a torn vector that jumps into
-        # garbage on the next interrupt. Restore the KERNAL vector and
-        # disable VIC raster IRQs; the reloaded program re-installs its own.
-        send_command(s, '> d01a 00', timeout=0.5)   # VIC IRQs off
-        send_command(s, '> d019 ff', timeout=0.5)   # ack pending
-        send_command(s, '> 0314 31', timeout=0.5)   # KERNAL IRQ vector lo
-        send_command(s, '> 0315 ea', timeout=0.5)   # KERNAL IRQ vector hi
-
-        # Load program to memory (device 0 = computer memory)
-        response = send_command(s, f'l "{prg_path}" 0', timeout=2.0)
-        if "Error" in response or "error" in response:
-            print(f"Load error: {response}")
-            return False
-        
-        # Small delay to ensure load completes
-        time.sleep(0.2)
-        
-        # Start execution at $0810 by default.
-        # Most programs in this repo embed a small BASIC stub that does SYS 2061/2064,
-        # and the machine-code entrypoint ends up at $0810.
-        send_command(s, f'g {start_addr:04x}', timeout=0.5)
-        
-        print("✓ Reload complete - game running")
+        path = Path(prg_path).resolve()
+        if any(c in str(path) for c in ('"', '\n', '\r')):
+            raise ValueError('PRG path contains unsupported monitor characters')
+        address, payload = read_prg(path)
+        entry = detect_start_address(path) if start_addr is None else start_addr
+        if type(entry) is not int or not address <= entry < address + len(payload):
+            raise ValueError('Start address must lie inside the loaded PRG')
+        with ViceMonitor(host, port, timeout=3.0, reset_on_error=True) as monitor:
+            dump = f'm {address:04x} {address + len(payload) - 1:04x}'
+            # Keep the CPU stopped until load contents have been checked. RAM bank
+            # selection affects monitor access, not the emulated CPU's memory port.
+            commands = ['bank cpu', '> d01a 00', '> d019 ff', '> 0314 31',
+                        '> 0315 ea', 'bank ram', f'l "{path}" 0', dump, 'bank cpu']
+            response = monitor.command_sequence(commands, resume=False)
+            actual = bytes(parse_monitor_bytes(response[dump], address, len(payload)))
+            if actual != payload:
+                raise OSError('PRG readback differs from the file; execution not started')
+            monitor.start(entry)
+        print(f'PRG verified ({len(payload)} bytes); execution requested at ${entry:04x}')
         return True
-        
-    except Exception as e:
-        print(f"Error during reload: {e}")
+    except (OSError, ValueError) as error:
+        print(f'Reload failed: {error}', file=sys.stderr)
         return False
-    finally:
-        try:
-            s.close()
-        except:
-            pass
 
 
 def main():
-    """Main entry point."""
-    # Parse arguments
-    game = "snake"
-    start_addr = DEFAULT_START_ADDR
-    args = sys.argv[1:]
-
-    # Optional: allow overriding start address (hex), e.g. --start 080d
-    if '--start' in args:
-        try:
-            i = args.index('--start')
-            start_addr = int(args[i + 1], 16)
-            del args[i:i + 2]
-        except Exception:
-            print("Error: --start requires a hex address, e.g. --start 0810")
-            return 1
-
-    if len(args) > 0:
-        game = args[0]
-    
-    # Handle --help
-    if game in ('-h', '--help'):
-        print(__doc__)
-        return 0
-    
-    # Resolve path
-    prg_path = resolve_prg_path(game)
-    
-    if not prg_path:
-        print(f"Error: Could not find .prg file for '{game}'")
-        print("Try: python3 reload_game.py snake2")
-        print("  or: python3 reload_game.py path/to/game.prg")
-        return 1
-    
-    # Reload
-    success = reload_game(prg_path, start_addr=start_addr)
-    return 0 if success else 1
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('game', nargs='?', default='snake')
+    parser.add_argument('--start', type=lambda value: int(value, 16),
+                        help='Explicit hexadecimal entrypoint; default: detect BASIC SYS')
+    parser.add_argument('--host', default='127.0.0.1')
+    parser.add_argument('--port', type=int, default=6510)
+    args = parser.parse_args()
+    path = resolve_prg_path(args.game)
+    if path is None:
+        parser.error(f'Cannot resolve a unique PRG for {args.game!r}; pass its path')
+    return 0 if reload_game(path, args.host, args.port, args.start) else 1
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     sys.exit(main())

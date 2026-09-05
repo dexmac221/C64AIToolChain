@@ -1,0 +1,24 @@
+{
+  "images": [
+    "deep_signal/evidence/final/title.png",
+    "deep_signal/evidence/final/play-06.png",
+    "deep_signal/evidence/final/play-10.png"
+  ],
+  "prompt": "Review these screenshots of an original C64 platform shooter called DEEP SIGNAL. The player is an orange astronaut, drones are red/purple, world platforms cyan/blue, HUD plates at the two top corners. Describe each image, legibility, sprite/terrain alignment, obvious corruption and composition. If any visual detail is uncertain say so. Do not infer frame rate or movement from still images. Be concise.",
+  "response": {
+    "model": "gemma4:e4b-it-qat",
+    "created_at": "2026-09-05T11:47:13.496342682Z",
+    "message": {
+      "role": "assistant",
+      "content": "Here is a description of each screenshot:\n\n**Image 1:**\n*   **Description:** A text-heavy screen displaying the title \"DEEP SIGNAL\" and several lines of white text providing mission objectives/status.\n*   **Legibility:** High. The white text is clear against the black background.\n*   **Sprite/Terrain Alignment:** Not applicable (text screen).\n*   **Obvious Corruption:** None visible.\n*   **Composition:** Centered text, typical of a title or menu screen.\n\n**Image 2:**\n*   **Description:** A side-scrolling action scene. An orange astronaut sprite is positioned on a cyan/blue platform. Red/purple drone sprites are visible in the background/mid-ground. The screen is framed by cyan/blue world platforms. HUD elements are visible in the top corners.\n*   **Legibility:** Moderate. The sprites are discernible, but the resolution is low.\n*   **Sprite/Terrain Alignment:** The astronaut appears correctly placed on the platform. The drones are positioned within the environment.\n*   **Obvious Corruption:** None immediately apparent, though the pixel art style is very blocky.\n*   **Composition:** Action-oriented, utilizing the full width of the screen to show gameplay.\n\n**Image 3:**\n*   **Description:** Another text screen, displaying \"DEEP SIGNAL\" and status updates (\"SIGNAL RESTORED,\" \"MISSION COMPLETE,\" etc.).\n*   **Legibility:** High. The white text is clear against the black background.\n*   **Sprite/Terrain Alignment:** Not applicable (text screen).\n*   **Obvious Corruption:** None visible.\n*   **Composition:** Centered text, typical of a status or end-of-level screen."
+    },
+    "done": true,
+    "done_reason": "stop",
+    "total_duration": 4853925142,
+    "load_duration": 2278591712,
+    "prompt_eval_count": 242,
+    "prompt_eval_duration": 354334000,
+    "eval_count": 370,
+    "eval_duration": 2213951000
+  }
+}

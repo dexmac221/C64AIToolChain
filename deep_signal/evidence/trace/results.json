@@ -1,0 +1,67 @@
+{
+  "samples": [
+    {
+      "signature": "DS",
+      "state": 1,
+      "ticks": 130,
+      "updates": 92,
+      "missed": 5,
+      "worst_cycles": 21004,
+      "renders": 36,
+      "player": [
+        246,
+        302
+      ],
+      "camera": [
+        102,
+        214
+      ],
+      "health": 5,
+      "signals": 1,
+      "demo": 1,
+      "last_cycles": 17565,
+      "route": 2,
+      "grounded": 0,
+      "display_camera": [
+        102,
+        214
+      ],
+      "screen_mismatches": 0,
+      "wall_seconds": 2.0
+    }
+  ],
+  "failure": null,
+  "title": {
+    "signature": "DS",
+    "state": 0,
+    "ticks": 20,
+    "updates": 0,
+    "missed": 0,
+    "worst_cycles": 0,
+    "renders": 0,
+    "player": [
+      0,
+      0
+    ],
+    "camera": [
+      0,
+      0
+    ],
+    "health": 0,
+    "signals": 0,
+    "demo": 0,
+    "last_cycles": 439,
+    "route": 0,
+    "grounded": 0,
+    "display_camera": [
+      0,
+      0
+    ]
+  },
+  "settings": {
+    "resourceget \"Speed\"": "Speed=100\n(C:$1df4) ",
+    "resourceget \"AutostartWarp\"": "AutostartWarp=0\n(C:$1df4) ",
+    "warp": "Warp mode is off.\n(C:$1df4) "
+  },
+  "network_errors": 0
+}
