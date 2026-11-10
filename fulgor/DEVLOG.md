@@ -137,7 +137,10 @@ a clean top edge at line $56 in all eight phases.
 
 Measured: band writes start between cycle 52 and 62 of the row's last
 line in every phase, i.e. in the right border or the blanking; the
-opening write on cycle 59 of line $55, every frame.
+opening write on cycle 59 of line $55, every frame. (Corrected at the
+end of the day, see "the band writes, checked on screen": those cycles
+are where the store *instruction* starts, in VICE's numbering, probably
+from an earlier calibration.)
 
 ### Where the budget stands
 
@@ -228,6 +231,37 @@ session, a fresh VICE for each run).
 37 minutes in between: about two hours of work. The human's
 interventions were two pointers about the scrolling (the right-hand
 flicker, then the crawl caused by the checker).
+
+### The band writes, checked on screen
+
+A reviewer (another Claude instance, through the human) doubted the
+sentence "cycles 52-62, inside the right border": in Bauer's numbering
+the 38-column window closes around cycle 55, so a write at 52-54 could
+colour the last pixels of a row's last line. Fair, and the sentence was
+loose twice over: the numbers were breakpoints on `sta $d021`, i.e. the
+instruction's first cycle in VICE's numbering (from 0), not the write,
+which is its fourth cycle; and they probably come from an earlier
+calibration (D1N_ADJ went from 17 to 15, which moves the writes two
+cycles later).
+
+Measured again on the shipping build, on a second VICE (port 6511):
+
+- breakpoints on `nb_w`, eight camera phases with a few frames between
+  them: the store starts on cycles 55-60 of the row's last line in every
+  phase, so the write lands on 58-63. A first, messier sampling also saw
+  starts up to cycle 3 of the next line - sprite fetches delaying the
+  NMI - which still writes in the left border, well before the window
+  opens on that line;
+- on screen, which is what settles it: 32 screenshots over all eight
+  phases on the plateau and in the canyon (`evidence/band_edges/`,
+  checker `evidence/band_edges.py`). At 40 band edges whose right end is
+  open sky, the last visible pixels of the row's last line never show
+  the new colour; at 160 whose left end is open sky, the first visible
+  pixels of the next row never show the old one. (A first version of
+  the checker skipped exactly the edges it was meant to catch - it
+  required the colour to change at both ends - and flagged the grass
+  line instead; the version kept here finds the edge in the middle of
+  the line and judges each end separately.)
 
 ## Open
 

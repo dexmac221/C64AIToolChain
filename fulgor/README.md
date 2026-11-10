@@ -44,8 +44,11 @@ All of the frame is 6502 assembly (`engine.s`, `game.s`, `sound.s`); C
 - **Sky**: `$D021` per world row by NMI. CIA 2 timer B runs one PAL
   frame (19 656 cycles), synchronised once at boot; its handler removes
   its own jitter and starts timer A at 504 cycles (one character row).
-  Writes land between cycles 52 and 62 of a row's last line in all eight
-  fine-scroll phases. An invalid ECM+MCM mode masks the ragged first row,
+  Each store starts on cycles 55-60 of a row's last line (VICE numbering,
+  from 0) and writes three cycles later, after the 38-column window has
+  closed; sprite fetches can push it into the first cycles of the next
+  line, still in the left border. Checked on screen in all eight
+  fine-scroll phases (`evidence/band_edges.md`). An invalid ECM+MCM mode masks the ragged first row,
   so the playfield's top edge is clean.
 - **Sprites**: a multiplexer over all eight hardware sprites, with a
   live-object list kept in Y order, an unrolled IRQ ladder for the first
