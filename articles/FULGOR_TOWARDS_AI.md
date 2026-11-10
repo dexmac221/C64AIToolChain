@@ -1,12 +1,59 @@
-# A Model Built a Turrican-Class Commodore 64 Game in a Day. Only a Human Eye Saw Its Bug
+# Claude Fable 5.2 vs. the Commodore 64: We Have a Real Winner
 
-*FULGOR scrolls in eight directions at 50 frames a second and paints its sky with a cycle-exact interrupt. Its most instructive bug was not found by any of the agent's instruments, because they were looking at the wrong instant.*
+*The day after its release, Anthropic's newest model built a Turrican-class C64 game in a single day. The 1982 machine still landed the best punch: a bug that only a human eye could see.*
 
 ![FULGOR: a scripted test run recorded in VICE](../fulgor/fulgor_demo.gif)
 
 *Real VICE emulator footage. The GIF plays at 7 frames a second, roughly one for every six game frames, so it shows the game but does not measure its smoothness. Scene changes are teleports in the test script; at the end the hero dies in the lava.*
 
-The request was one line: analyse the project, then make "a high-level Commodore 64 game, something like Turrican 2, under another name: a demo of the first level, not the whole game". The result is **FULGOR**, developed by **Claude Fable 5** in Claude Code inside [C64AIToolChain](https://github.com/dexmac221/C64AIToolChain), a workspace where AI agents get a cross-compiler, an emulator they can drive through a socket, and a set of rules, and are asked to ship games for a 1982 computer. It took one working day. On the other side of the screen was a human who grew up on the VIC-20 and the C64, watching the game and stepping in when something looked wrong.
+## The tale of the tape
+
+On November 9, 2026, Anthropic released Claude Fable 5.2, a model "designed to tackle the most daunting technical challenges". The next morning it stepped into the ring with an opponent that has been undefeated since 1982.
+
+| | Claude Fable 5.2 | Commodore 64 |
+|---|---|---|
+| Debut | November 9, 2026 | 1982 |
+| Price | $8 / $40 per million input / output tokens | $595 at launch |
+| Speed | outputs up to 30% faster than Fable 5.1 | a 6510 CPU at 0.985 MHz (PAL) |
+| Memory | not a published figure | 64 KB, shared with the video chip |
+| Graphics | 73.4% on Chartography (reading charts) | 320×200 pixels, 16 colours, 8 hardware sprites |
+| Sound | wrote this game's SID tune, cannot hear it | SID chip, three voices |
+
+In its corner, Fable 5.2 brought the benchmark table Anthropic published at launch. These are the rows where Fable 5.2 itself is scored:
+
+| Benchmark | Fable 5.2 | Fable 5.1 | Opus 5.5 | GPT-6 Astra | Gemini 4 Carbon |
+|---|---|---|---|---|---|
+| FrontierCode 2.0 (agentic coding) | **49.1%** | 32.4% | 45.5% | 42.8% | 41.1% |
+| FrontierSWE v2 (agentic coding) | **69.9%** | 56.3% | 62.3% | 65.5% | 61.2% |
+| AutomationBench (business workflows) | 51.4% | 31.4% | 42.5% | 41.4% | **53.9%** |
+| Terminal-Bench-Science 0.1 (agentic research) | **74.6%** | 52.6% | 58.7% | 68.1% | 64.8% |
+| WANDR, relaxed score (agentic search) | **82.1%** | 68.7% | 72.3% | — | — |
+| OSWorld 2.1, offline set, partial (computer use) | **89.3%** | 83.5% | 87.2% | 79.5% | 81.5% |
+| RoboDojo Sim (robotics) | **64.9%** | 27.6% | 39.4% | 29.8% | — |
+| AA-Briefcase v1.1, rubric (knowledge work) | **66.1%** | 61.5% | 61.2% | 52.0% | 61.8% |
+| AA-Briefcase v1.1, Elo (knowledge work) | 1785 | 1669 | **1800** | 1569 | 1611 |
+| Remote Labor Index (knowledge work) | **41.3%** | 17.9% | 21.3% | 20.8% | — |
+| Humanity's Last Exam, with tools | **74.2%** | 65.6% | 67.7% | 57.2% | — |
+| Chartography, no tools (chart recognition) | **73.4%** | 44.8% | 64.4% | 71.0% | 72.5% |
+
+*Source: Anthropic, ["Introducing Claude Fable 5.2 and Claude Mythos 5.2"](https://www.anthropic.com/claude-fable-and-mythos-5-2), November 9, 2026. These are Anthropic's own figures, not independently verified. Fable 5.2, Fable 5.1 and Opus 5.5 were scored with safeguards on, and every model at its highest available effort, except where the original table says otherwise: FrontierCode 2.0 lists Fable 5.2 and 5.1 at Xhigh effort and Gemini 4 Carbon at Medium; the Remote Labor Index lists Fable 5.2 at High effort. RoboDojo Sim was run internally. The original also has three rows (two cybersecurity benchmarks and protein design) reported for Mythos 5.2, the variant without Fable's safeguards, which are left out here.*
+
+The Commodore 64 publishes no benchmark table. It has one test, and it runs fifty times a second: a PAL frame lasts 312 raster lines, and the game either finishes its work in time or drops the frame. No partial credit, no effort settings.
+
+Here is how the fight went:
+
+| Round | Result |
+|---|---|
+| Eight-way scrolling at 50 frames a second | **Fable 5.2**: zero late frames in play |
+| A sky of colour bands, timed to the CPU cycle | **Fable 5.2**, after the machine corrected the plan three times |
+| A whole level in 64 KB | **Fable 5.2**: a 46,864-byte program |
+| A flicker on the right edge of the screen | **Commodore 64**: none of the model's instruments saw it |
+
+So we have a real winner. On points, it is Claude Fable 5.2: a complete, playable level in one day. The best punch of the fight went to the 1982 machine. The real winner was not in the ring: it was the person watching the screen, who saw what neither of them could. The rest of this article is how that happened.
+
+## The brief
+
+The request was one line: analyse the project, then make "a high-level Commodore 64 game, something like Turrican 2, under another name: a demo of the first level, not the whole game". The result is **FULGOR**, developed by **Claude Fable 5.2** in Claude Code inside [C64AIToolChain](https://github.com/dexmac221/C64AIToolChain), a workspace where AI agents get a cross-compiler, an emulator they can drive through a socket, and a set of rules, and are asked to ship games for a 1982 computer. It took one working day, the day after the model's release. On the other side of the screen was a human who grew up on the VIC-20 and the C64, watching the game and stepping in when something looked wrong.
 
 FULGOR is a complete, playable level. A two-sprite hero runs, jumps and fires with three weapon power levels. There are three enemy kinds (a patroller, a wasp and a turret that shoots back), gems and power-ups, energy, lives, checkpoints and lava. There is a HUD, a title screen, an original three-voice SID tune and seven sound effects. The world is 4,096 pixels wide and 1,280 tall and scrolls in all eight directions. The engine is entirely 6502 assembly; C handles start-up, the HUD's text and the transitions between lives. The program is 46,864 bytes.
 
@@ -126,4 +173,4 @@ For anyone building with coding agents, three things carry over beyond the C64:
 
 **Materials:** [game, source and commands](https://github.com/dexmac221/C64AIToolChain/blob/main/fulgor/README.md) · [full development diary](https://github.com/dexmac221/C64AIToolChain/blob/main/fulgor/DEVLOG.md) · [the screen-against-map checker](https://github.com/dexmac221/C64AIToolChain/blob/main/fulgor/check.py) · [the vision model's answers](https://github.com/dexmac221/C64AIToolChain/blob/main/fulgor/evidence/vlm_review.md) · [the C64AIToolChain repository](https://github.com/dexmac221/C64AIToolChain)
 
-*Game developed by Claude Fable 5 in Claude Code. Closing checks, the new recording and this text prepared by Claude Opus 5.5 from the session's diary and measurements, for the author's review and publication.*
+*Game developed by Claude Fable 5.2 in Claude Code. Closing checks, the new recording and this text prepared by Claude Opus 5.5 from the session's diary and measurements, for the author's review and publication.*

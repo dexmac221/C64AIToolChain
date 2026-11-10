@@ -1,8 +1,8 @@
 # FULGOR
 
 An 8-way scrolling action game for the Commodore 64 (PAL) in the class of
-Turrican II: the first level as a demo. Built by Claude Fable 5 in Claude
-Code on 2026-11-10. Code, art, level and music are original.
+Turrican II: the first level as a demo. Built by Claude Fable 5.2 in Claude
+Code on 2026-11-10, the day after its release. Code, art, level and music are original.
 
 <p align="center"><img src="fulgor_demo.gif" alt="FULGOR demo" width="480"></p>
 

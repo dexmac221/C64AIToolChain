@@ -1,7 +1,7 @@
 # FULGOR — development log
 
 An 8-way scrolling action game in the Turrican II class: the first level
-as a demo. Started 2026-11-10 on Claude Fable 5 (Claude Code), in the
+as a demo. Started 2026-11-10 on Claude Fable 5.2 (Claude Code), in the
 repository that already held IRON VEIN. Raw notes, kept as the work
 happens, dead ends included.
 
@@ -195,7 +195,9 @@ looking at the picture.
 
 The human said "ottimo" and asked for an article, as for the other
 games in this repository (written by Claude Opus 5.5 from this diary;
-the game itself is Fable 5's).
+the game itself is Fable 5.2's. An earlier version of this diary and
+the first commit said "Fable 5": the session transcript records
+`claude-fable-5-2` for every step of the development).
 
 Everything below ran on a **second VICE on monitor port 6511**, so the
 one the human was playing stayed untouched. `check.py` got `--port` and
