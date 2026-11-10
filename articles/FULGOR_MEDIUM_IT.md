@@ -2,7 +2,7 @@
 
 *Il giorno dopo l'uscita, il nuovo modello di Anthropic ha scritto in circa due ore un gioco per C64 nella classe di Turrican, disegnando tutto da zero. Ma la macchina del 1982 un bel colpo l'ha messo a segno: un difetto che solo un occhio umano poteva vedere.*
 
-![FULGOR: una partita di prova registrata in VICE](../fulgor/fulgor_demo.gif)
+![FULGOR: una partita di prova registrata in VICE](../fulgor/fulgor_demo_large.gif)
 
 *Registrazione reale dell'emulatore VICE. La GIF gira a 7 immagini al secondo, circa una ogni sei fotogrammi del gioco: illustra il gioco, non ne misura la fluidità. I cambi di scena sono teletrasporti del copione di prova; nel finale l'eroe muore nella lava.*
 

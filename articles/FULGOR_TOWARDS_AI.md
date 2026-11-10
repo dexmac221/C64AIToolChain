@@ -2,7 +2,7 @@
 
 *The day after its release, Anthropic's newest model built a Turrican-class C64 game in about two hours, drawing every pixel from scratch. The 1982 machine still landed one good punch: a bug that only a human eye could see.*
 
-![FULGOR: a scripted test run recorded in VICE](../fulgor/fulgor_demo.gif)
+![FULGOR: a scripted test run recorded in VICE](../fulgor/fulgor_demo_large.gif)
 
 *Real VICE emulator footage. The GIF plays at 7 frames a second, roughly one for every six game frames, so it shows the game but does not measure its smoothness. Scene changes are teleports in the test script; at the end the hero dies in the lava.*
 
