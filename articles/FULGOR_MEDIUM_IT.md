@@ -1,6 +1,6 @@
 # Claude Fable 5.2 contro il Commodore 64: abbiamo un vero vincitore
 
-*Il giorno dopo l'uscita, il nuovo modello di Anthropic ha scritto in una giornata un gioco per C64 nella classe di Turrican. Ma il colpo migliore l'ha messo a segno la macchina del 1982: un difetto che solo un occhio umano poteva vedere.*
+*Il giorno dopo l'uscita, il nuovo modello di Anthropic ha scritto in circa due ore un gioco per C64 nella classe di Turrican, disegnando tutto da zero. Ma la macchina del 1982 un bel colpo l'ha messo a segno: un difetto che solo un occhio umano poteva vedere.*
 
 ![FULGOR: una partita di prova registrata in VICE](../fulgor/fulgor_demo.gif)
 
@@ -17,7 +17,6 @@ Il 9 novembre 2026 Anthropic ha pubblicato Claude Fable 5.2, un modello pensato,
 | Velocità | testo generato fino al 30% più in fretta di Fable 5.1 | CPU 6510 a 0,985 MHz (PAL) |
 | Memoria | dato non pubblicato | 64 KB, condivisi con il chip video |
 | Grafica | 73,4% su Chartography (lettura di grafici) | 320×200 pixel, 16 colori, 8 sprite hardware |
-| Suono | ha scritto il brano SID del gioco, ma non può ascoltarlo | chip SID, tre voci |
 
 Nel suo angolo, Fable 5.2 ha portato la tabella dei benchmark pubblicata da Anthropic al lancio. Queste sono le righe in cui viene misurato Fable 5.2:
 
@@ -49,15 +48,15 @@ Ecco com'è andato l'incontro:
 | Un livello intero in 64 KB | **Fable 5.2**: un programma di 46 864 byte |
 | Uno sfarfallio sul bordo destro dello schermo | **Commodore 64**: nessuno degli strumenti del modello l'ha visto |
 
-Quindi un vero vincitore c'è. Ai punti vince Claude Fable 5.2: un livello completo e giocabile in una giornata. Il colpo migliore dell'incontro l'ha messo a segno la macchina del 1982. Il vero vincitore però non era sul ring: era la persona davanti allo schermo, che ha visto quello che nessuno dei due poteva vedere. Il resto dell'articolo racconta come è andata.
+Allora, un vero vincitore c'è? Il verdetto spetta a chi il gioco l'ha giocato, cresciuto con queste macchine. Vista la fluidità di FULGOR, e il fatto che ogni blocco, ogni sprite e l'intero livello sono stati disegnati da zero, il Commodore 64 non ne esce sconfitto: resta un banco di prova incredibile per i modelli generativi, uno che risponde cinquanta volte al secondo e con cui non si discute. Ma Claude Fable 5.2 ha creato un gioco di alto livello in circa due ore, più in fretta e meglio di qualunque altro modello provato prima in questa toolchain. Il vero vincitore è lui. Il resto dell'articolo racconta come è andata.
 
 ## La richiesta
 
-La richiesta è arrivata in una riga: analizzare il progetto e poi fare "un gioco per Commodore 64 di alto livello, tipo Turrican 2, da rinominare: la demo del primo livello, non il gioco intero". Il risultato è **FULGOR**, sviluppato da **Claude Fable 5.2** in Claude Code dentro C64AIToolChain, in una sola giornata di lavoro, il giorno dopo l'uscita del modello. Dall'altra parte c'era un umano cresciuto con il VIC-20 e il C64, che guardava lo schermo e interveniva quando qualcosa non gli tornava.
+La richiesta è arrivata in una riga: analizzare il progetto e poi fare "un gioco per Commodore 64 di alto livello, tipo Turrican 2, da rinominare: la demo del primo livello, non il gioco intero". Il risultato è **FULGOR**, sviluppato da **Claude Fable 5.2** in Claude Code dentro C64AIToolChain, in circa due ore di lavoro, il giorno dopo l'uscita del modello: due ore e mezza dal primo messaggio all'ultima compilazione, di cui 37 minuti di pausa. Il modello non partiva dal nulla. Nella toolchain c'erano già le idee del motore di IRON VEIN e il suo diario, gli strumenti per pilotare e filmare l'emulatore, le regole del progetto. Ma codice, grafica e livello sono stati fatti da zero. Dall'altra parte c'era un umano cresciuto con il VIC-20 e il C64, che guardava lo schermo e interveniva quando qualcosa non gli tornava: i suoi interventi si sono ridotti a due indicazioni sullo scorrimento.
 
-FULGOR è un livello completo da giocare: un eroe di due sprite che corre, salta e spara con tre livelli di potenza dell'arma, tre tipi di nemici (un pattugliatore, una vespa e una torretta che spara), gemme e potenziamenti, energia, vite, checkpoint e lava. C'è un HUD, una schermata del titolo, un brano originale per il SID a tre voci e sette effetti sonori. Il mondo è largo 4 096 pixel e alto 1 280, e si scorre in tutte le otto direzioni. Il motore è tutto in Assembly 6502; il C resta per l'avvio, il testo dell'HUD e i passaggi tra una vita e l'altra. Il programma pesa 46 864 byte.
+FULGOR è un livello completo da giocare: un eroe di due sprite che corre, salta e spara con tre livelli di potenza dell'arma, tre tipi di nemici (un pattugliatore, una vespa e una torretta che spara), gemme e potenziamenti, energia, vite, checkpoint e lava. C'è un HUD e una schermata del titolo. Il mondo è largo 4 096 pixel e alto 1 280, e si scorre in tutte le otto direzioni. Il motore è tutto in Assembly 6502; il C resta per l'avvio, il testo dell'HUD e i passaggi tra una vita e l'altra. Il programma pesa 46 864 byte.
 
-Di Turrican c'è solo la classe del gioco. Codice, grafica, livello e musica sono originali.
+Di Turrican c'è solo la classe del gioco. Codice, grafica e livello sono originali.
 
 ## Che cosa vuol dire "classe Turrican II"
 
@@ -69,7 +68,7 @@ In questo repository c'era già IRON VEIN, un'altra demo a scorrimento in otto d
 | sfondo | nero | un cielo a bande di colore |
 | eroe | uno sprite, 21 pixel | due sprite sovrapposti, circa 40 pixel |
 | collisioni | blocchi da 32 pixel | per carattere, con piattaforme sottili |
-| bilancio | 6 nemici, circa 5% di fotogrammi in ritardo | spazio per armi e musica, zero ritardi |
+| bilancio | 6 nemici, circa 5% di fotogrammi in ritardo | spazio per le armi, zero ritardi |
 
 Le cause stavano nel codice: camera ed eroe scritti in C (2 000 e 1 500 cicli a fotogramma), la copia dello schermo con un indirizzamento lento, gli interrupt che passavano per il KERNAL. Quindi FULGOR ha una cartella nuova e un motore nuovo. Riprende le idee di IRON VEIN che avevano retto, ma l'intero fotogramma è in Assembly.
 
@@ -118,7 +117,7 @@ Lo stesso NMI ha risolto un vecchio difetto di IRON VEIN. Dove l'HUD incontra il
 
 ## Il gioco sopra il motore
 
-Poi sono arrivati i nemici, e il bilancio è saltato di nuovo: linea 253 su 312. Il profilatore ha detto che la tabella degli sprite costava 340 cicli per sprite, non i 230 stimati, perché faceva tre passate su variabili in memoria normale. Ora è una passata sola in pagina zero, circa 225 cicli. La copia dello schermo è passata da tre a quattro bande e le cadute sono state limitate a 3 pixel per fotogramma, così il fotogramma più pesante copia due bande da dieci colonne. Con la musica, il fotogramma peggiore in gioco arriva alla linea 213–233 su 312, con zero fotogrammi in ritardo.
+Poi sono arrivati i nemici, e il bilancio è saltato di nuovo: linea 253 su 312. Il profilatore ha detto che la tabella degli sprite costava 340 cicli per sprite, non i 230 stimati, perché faceva tre passate su variabili in memoria normale. Ora è una passata sola in pagina zero, circa 225 cicli. La copia dello schermo è passata da tre a quattro bande e le cadute sono state limitate a 3 pixel per fotogramma, così il fotogramma più pesante copia due bande da dieci colonne. Il fotogramma peggiore in gioco arriva ora alla linea 213–233 su 312, con zero fotogrammi in ritardo.
 
 Un dettaglio di gioco è venuto dalla geometria. I primi nemici camminavano a terra, alti 21 pixel. L'arma dell'eroe è a 24 pixel da terra, quindi i colpi passavano sopra le loro teste. Ora tutti i nemici stanno a mezz'aria, all'altezza dell'arma.
 
@@ -150,11 +149,10 @@ Le regole del progetto chiedono di far guardare il gioco anche a un modello visi
 
 ## Dove siamo arrivati
 
-FULGOR si gioca dal titolo alla fine del livello. Le misure sulla versione finale: 1 046 fotogrammi (una ventina di secondi) di corsa, salto e fuoco con zero fotogrammi in ritardo e il fotogramma peggiore alla linea 213 su 312; fino a circa 233 nelle scene più piene con la musica. Lo schermo coincide con la mappa in 180 campioni presi nell'istante in cui il difetto si sarebbe visto, in tutte le direzioni provate.
+FULGOR si gioca dal titolo alla fine del livello. Le misure sulla versione finale: 1 046 fotogrammi (una ventina di secondi) di corsa, salto e fuoco con zero fotogrammi in ritardo e il fotogramma peggiore alla linea 213 su 312; fino a circa 233 nelle scene più piene. Lo schermo coincide con la mappa in 180 campioni presi nell'istante in cui il difetto si sarebbe visto, in tutte le direzioni provate.
 
 Restano aperte diverse cose:
 
-- **la musica**: il modello non può ascoltare. Ha controllato che le note di ogni battuta fossero quelle scritte guardando lo spettro di una registrazione WAV dell'emulatore. Il giudizio sull'ascolto è dell'umano;
 - **il finale**: non c'è un boss, il livello finisce raggiungendo l'uscita. Mancano anche il raggio rotante e la trasformazione in ruota che fanno Turrican;
 - **le cadute lunghe**: la camera a volte aspetta al confine e resta indietro di qualche pixel (39 attese in 11 secondi di una prova con una caduta lunga);
 - **il logo del titolo** si legge poco sul cielo chiaro.

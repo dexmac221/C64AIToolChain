@@ -223,6 +223,12 @@ session, a fresh VICE for each run).
   Answers in `evidence/vlm_review.md`. A still frame could not have
   shown the right-hand flicker in any case.
 
+**How long it took**, from the session transcript: first message at
+16:01, last build of the game at 18:31 (Italian time), with a pause of
+37 minutes in between: about two hours of work. The human's
+interventions were two pointers about the scrolling (the right-hand
+flicker, then the crawl caused by the checker).
+
 ## Open
 
 The human's verdict on feel, picture and tune. A boss and the level's

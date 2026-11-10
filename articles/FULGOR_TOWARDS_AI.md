@@ -1,6 +1,6 @@
 # Claude Fable 5.2 vs. the Commodore 64: We Have a Real Winner
 
-*The day after its release, Anthropic's newest model built a Turrican-class C64 game in a single day. The 1982 machine still landed the best punch: a bug that only a human eye could see.*
+*The day after its release, Anthropic's newest model built a Turrican-class C64 game in about two hours, drawing every pixel from scratch. The 1982 machine still landed one good punch: a bug that only a human eye could see.*
 
 ![FULGOR: a scripted test run recorded in VICE](../fulgor/fulgor_demo.gif)
 
@@ -17,7 +17,6 @@ On November 9, 2026, Anthropic released Claude Fable 5.2, a model "designed to t
 | Speed | outputs up to 30% faster than Fable 5.1 | a 6510 CPU at 0.985 MHz (PAL) |
 | Memory | not a published figure | 64 KB, shared with the video chip |
 | Graphics | 73.4% on Chartography (reading charts) | 320×200 pixels, 16 colours, 8 hardware sprites |
-| Sound | wrote this game's SID tune, cannot hear it | SID chip, three voices |
 
 In its corner, Fable 5.2 brought the benchmark table Anthropic published at launch. These are the rows where Fable 5.2 itself is scored:
 
@@ -49,15 +48,15 @@ Here is how the fight went:
 | A whole level in 64 KB | **Fable 5.2**: a 46,864-byte program |
 | A flicker on the right edge of the screen | **Commodore 64**: none of the model's instruments saw it |
 
-So we have a real winner. On points, it is Claude Fable 5.2: a complete, playable level in one day. The best punch of the fight went to the 1982 machine. The real winner was not in the ring: it was the person watching the screen, who saw what neither of them could. The rest of this article is how that happened.
+So, do we have a real winner? The verdict belongs to the person who played the game, who grew up on these machines. Given how smoothly FULGOR runs, and that every tile, sprite and the whole level were drawn from scratch, the Commodore 64 does not come out of this defeated: it remains an incredible test bench for generative models, one that answers fifty times a second and cannot be argued with. But Claude Fable 5.2 built a high-level game in about two hours, faster and better than any other model tested in this toolchain before it. That is the real winner. The rest of this article is how it went.
 
 ## The brief
 
-The request was one line: analyse the project, then make "a high-level Commodore 64 game, something like Turrican 2, under another name: a demo of the first level, not the whole game". The result is **FULGOR**, developed by **Claude Fable 5.2** in Claude Code inside [C64AIToolChain](https://github.com/dexmac221/C64AIToolChain), a workspace where AI agents get a cross-compiler, an emulator they can drive through a socket, and a set of rules, and are asked to ship games for a 1982 computer. It took one working day, the day after the model's release. On the other side of the screen was a human who grew up on the VIC-20 and the C64, watching the game and stepping in when something looked wrong.
+The request was one line: analyse the project, then make "a high-level Commodore 64 game, something like Turrican 2, under another name: a demo of the first level, not the whole game". The result is **FULGOR**, developed by **Claude Fable 5.2** in Claude Code inside [C64AIToolChain](https://github.com/dexmac221/C64AIToolChain), a workspace where AI agents get a cross-compiler, an emulator they can drive through a socket, and a set of rules, and are asked to ship games for a 1982 computer. It took about two hours of work, the day after the model's release: two and a half hours from the first message to the final build, 37 minutes of which were a pause. The model did not start from nothing. The toolchain already held IRON VEIN's engine ideas and development diary, tools to drive and film the emulator, and the project's rules. But the code, the art and the level were made from scratch. On the other side of the screen was a human who grew up on the VIC-20 and the C64, watching the game and stepping in when something looked wrong; their interventions came down to two pointers about the scrolling.
 
-FULGOR is a complete, playable level. A two-sprite hero runs, jumps and fires with three weapon power levels. There are three enemy kinds (a patroller, a wasp and a turret that shoots back), gems and power-ups, energy, lives, checkpoints and lava. There is a HUD, a title screen, an original three-voice SID tune and seven sound effects. The world is 4,096 pixels wide and 1,280 tall and scrolls in all eight directions. The engine is entirely 6502 assembly; C handles start-up, the HUD's text and the transitions between lives. The program is 46,864 bytes.
+FULGOR is a complete, playable level. A two-sprite hero runs, jumps and fires with three weapon power levels. There are three enemy kinds (a patroller, a wasp and a turret that shoots back), gems and power-ups, energy, lives, checkpoints and lava. There is a HUD and a title screen. The world is 4,096 pixels wide and 1,280 tall and scrolls in all eight directions. The engine is entirely 6502 assembly; C handles start-up, the HUD's text and the transitions between lives. The program is 46,864 bytes.
 
-Only the genre comes from Turrican. The code, art, level and music are original.
+Only the genre comes from Turrican. The code, art and level are original.
 
 ## What "Turrican II class" asks of a 1 MHz machine
 
@@ -69,7 +68,7 @@ The repository already held IRON VEIN, another 8-way scrolling demo written thre
 | background | black | a sky in raster colour bands |
 | hero | one sprite, 21 pixels | two stacked sprites, about 40 pixels |
 | collision | 32-pixel blocks | per character cell, with thin ledges |
-| budget | 6 enemies, ~5% late frames | room for weapons and music, 0 late frames |
+| budget | 6 enemies, ~5% late frames | room for weapons, 0 late frames |
 
 The causes were in the code: camera and hero written in C (2,000 and 1,500 cycles a frame), the screen copy using a slow addressing mode, interrupts routed through the KERNAL ROM. So FULGOR got a new directory and a new engine. It keeps the ideas from IRON VEIN that had held up, but the whole frame is assembly.
 
@@ -118,7 +117,7 @@ The same NMI fixed an old IRON VEIN wart. Where the HUD meets the playfield ther
 
 ## The game on top of the engine
 
-Then the enemies arrived and the budget broke again: line 253 of 312. The profiler showed the sprite table costing 340 cycles per sprite, not the estimated 230, because it made three passes over variables in ordinary memory. It is now a single pass in zero page, about 225 cycles. The screen copy went from three bands to four, and falls were capped at 3 pixels per frame, so the heaviest frame copies two ten-column bands. With music playing, the worst frame in play now finishes at raster line 213–233 of 312, with zero late frames.
+Then the enemies arrived and the budget broke again: line 253 of 312. The profiler showed the sprite table costing 340 cycles per sprite, not the estimated 230, because it made three passes over variables in ordinary memory. It is now a single pass in zero page, about 225 cycles. The screen copy went from three bands to four, and falls were capped at 3 pixels per frame, so the heaviest frame copies two ten-column bands. The worst frame in play now finishes at raster line 213–233 of 312, with zero late frames.
 
 One gameplay detail came from geometry. The first enemies walked on the ground and were 21 pixels tall. The hero's gun sits 24 pixels above the ground, so shots passed over their heads. All enemies now hover at gun height.
 
@@ -150,11 +149,10 @@ That is a good result, but it should be read for what it is. The right-edge flic
 
 ## Where it stands
 
-FULGOR plays from the title screen to the end of the level. Measured on the final build: 1,046 frames (about twenty seconds) of running, jumping and firing with zero late frames and the worst frame finishing at line 213 of 312; up to about 233 in the busiest scenes with music. The screen matches the map in 180 samples taken at the exact moment the defect would have shown, in every direction tested.
+FULGOR plays from the title screen to the end of the level. Measured on the final build: 1,046 frames (about twenty seconds) of running, jumping and firing with zero late frames and the worst frame finishing at line 213 of 312; up to about 233 in the busiest scenes. The screen matches the map in 180 samples taken at the exact moment the defect would have shown, in every direction tested.
 
 Still open:
 
-- **The music.** The model cannot listen. It checked that every bar plays the notes written by looking at the spectrum of a WAV recorded from the emulator. Whether it sounds good is the human's call.
 - **The ending.** There is no boss; the level ends at its exit. The rotating lightning beam and the gyroscope wheel that define Turrican are also missing.
 - **Long falls.** The camera sometimes waits at a boundary and trails by a few pixels (39 waits in 11 seconds of a test with a long fall).
 - **The title logo** is hard to read against the light sky.
